@@ -1,0 +1,311 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// テンプレート
+model Template {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  thumbnail   String
+  slideCount  Int      @default(0)
+  html        String?  @db.Text // 生成されたHTML
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // リレーション
+  slots       TemplateSlot[]
+  projects    Project[]
+
+  @@index([createdAt])
+  @@map("templates")
+}
+
+// テンプレートスロット
+model TemplateSlot {
+  id          String   @id @default(uuid())
+  templateId String
+  slideIndex  Int
+  name        String
+  type        SlotType
+  placeholder String  @default("")
+  required    Boolean @default(false)
+  createdAt   DateTime @default(now())
+
+  // リレーション
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  filledSlots FilledSlot[] @relation
+
+  @@index([templateId, slideIndex])
+  @@map("template_slots")
+}
+
+// プロジェクト
+model Project {
+  id          String        @id @default(uuid())
+  name        String
+  description String        @default("")
+  templateId  String
+  templateName String
+  status      ProjectStatus @default(DRAFT)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // リレーション
+  template    Template      @relation(fields: [templateId], references: [id])
+  slots       FilledSlot[]
+  storySections StorySection[]
+  materials   ProjectMaterial[]
+  versions    ProjectVersion[]
+  suggestions Suggestion[]
+  chatMessages ChatMessage[]
+  historyItems HistoryItem[]
+
+  @@index([templateId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("projects")
+}
+
+// 埋められたスロット
+model FilledSlot {
+  id            String      @id @default(uuid())
+  projectId    String
+  slotId        String      // TemplateSlotのIDを参照
+  slideIndex    Int
+  name          String
+  type          SlotType
+  value         String      @default("") @db.Text
+  status        SlotStatus  @default(EMPTY)
+  linkedStoryId String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // リレーション
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  templateSlot  TemplateSlot @relation(fields: [slotId], references: [id])
+  linkedStory   StorySection? @relation(fields: [linkedStoryId], references: [id])
+  suggestions   Suggestion[] @relation("SourceSlot")
+  targetSuggestions Suggestion[] @relation("TargetSlots")
+
+  @@unique([projectId, slotId])
+  @@index([projectId, slideIndex])
+  @@index([slotId])
+  @@index([linkedStoryId])
+  @@map("filled_slots")
+}
+
+// ストーリーセクション
+model StorySection {
+  id           String   @id @default(uuid())
+  projectId    String
+  title        String
+  content      String   @db.Text
+  slideIndices Int[]    // PostgreSQLの配列
+  status       StoryStatus @default(DRAFT)
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // リレーション
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  linkedSlots  FilledSlot[]
+  versions     ProjectVersionStory[]
+
+  @@index([projectId, order])
+  @@map("story_sections")
+}
+
+// プロジェクトマテリアル
+model ProjectMaterial {
+  id         String   @id @default(uuid())
+  projectId String
+  name       String
+  type       MaterialType
+  content    String   @db.Text
+  tags       String[] // PostgreSQLの配列
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // リレーション
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([type])
+  @@map("project_materials")
+}
+
+// プロジェクトバージョン
+model ProjectVersion {
+  id          String   @id @default(uuid())
+  projectId   String
+  name        String
+  description String   @default("") @db.Text
+  createdAt   DateTime @default(now())
+
+  // リレーション
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  slots       ProjectVersionSlot[]
+  storySections ProjectVersionStory[]
+
+  @@index([projectId, createdAt])
+  @@map("project_versions")
+}
+
+// バージョンのスロット（スナップショット）
+model ProjectVersionSlot {
+  id          String   @id @default(uuid())
+  versionId   String
+  slotId      String
+  slideIndex  Int
+  name        String
+  type        SlotType
+  value       String   @db.Text
+  status      SlotStatus
+  createdAt   DateTime @default(now())
+
+  // リレーション
+  version     ProjectVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId])
+  @@map("project_version_slots")
+}
+
+// バージョンのストーリー（スナップショット）
+model ProjectVersionStory {
+  id           String   @id @default(uuid())
+  versionId    String
+  storyId      String?  // 元のStorySectionのID
+  title        String
+  content      String   @db.Text
+  slideIndices Int[]
+  status       StoryStatus
+  order        Int
+  createdAt    DateTime @default(now())
+
+  // リレーション
+  version      ProjectVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  storySection StorySection? @relation(fields: [storyId], references: [id])
+
+  @@index([versionId])
+  @@map("project_version_stories")
+}
+
+// 提案
+model Suggestion {
+  id             String          @id @default(uuid())
+  projectId      String
+  type           SuggestionType
+  message        String          @db.Text
+  sourceSlotId   String?
+  targetSlotIds  String[]        @default([]) // PostgreSQLの配列
+  suggestedValue String?         @db.Text
+  dismissed      Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+
+  // リレーション
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceSlot     FilledSlot?     @relation("SourceSlot", fields: [sourceSlotId], references: [id])
+
+  @@index([projectId, dismissed])
+  @@index([sourceSlotId])
+  @@map("suggestions")
+}
+
+// チャットメッセージ
+model ChatMessage {
+  id        String   @id @default(uuid())
+  projectId String
+  role      ChatRole
+  content   String   @db.Text
+  context   Json?    // コンテキスト情報（型: slot | story | slide | general）
+  actions   Json?    // アクション配列
+  timestamp DateTime @default(now())
+
+  // リレーション
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, timestamp])
+  @@map("chat_messages")
+}
+
+// 履歴
+model HistoryItem {
+  id          String      @id @default(uuid())
+  projectId   String?
+  type        HistoryType
+  action      String
+  description String      @db.Text
+  timestamp   DateTime    @default(now())
+
+  // リレーション
+  project     Project?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, timestamp])
+  @@index([type])
+  @@map("history_items")
+}
+
+// 列挙型
+enum SlotType {
+  title
+  text
+  image
+  chart
+  list
+  icon
+}
+
+enum SlotStatus {
+  EMPTY
+  draft
+  filled
+  approved
+}
+
+enum ProjectStatus {
+  DRAFT
+  IN_PROGRESS
+  completed
+}
+
+enum StoryStatus {
+  DRAFT
+  approved
+}
+
+enum MaterialType {
+  icon
+  image
+  text
+  chart
+}
+
+enum SuggestionType {
+  slot_update
+  story_sync
+  material_add
+}
+
+enum ChatRole {
+  user
+  assistant
+  system
+}
+
+enum HistoryType {
+  project
+  template
+  slot
+  story
+  version
+}
+

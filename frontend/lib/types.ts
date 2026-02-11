@@ -1,116 +1,88 @@
+// ============================================
+// Slide Turbo — TypeScript 型定義
+// Backend の DTO / Entity に対応
+// ============================================
+
+// ── User ─────────────────────────────────────
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  icon: string | null;
+  created_at: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+// ── Template ─────────────────────────────────
+
 export interface Template {
-  id: string
-  name: string
-  description: string
-  thumbnail: string
-  slideCount: number
-  slots: TemplateSlot[]
-  createdAt: Date
+  id: string;
+  owner_id: string;
+  title: string;
+  contents: unknown; // JSON
+  created_at: string;
+  updated_at: string;
 }
 
-export interface TemplateSlot {
-  id: string
-  slideIndex: number
-  name: string
-  type: "title" | "text" | "image" | "chart" | "list" | "icon"
-  placeholder: string
-  required: boolean
+export interface TemplateListItem {
+  id: string;
+  title: string;
+  created_at: string;
 }
 
-export interface Project {
-  id: string
-  name: string
-  description: string
-  templateId: string
-  templateName: string
-  status: "draft" | "in-progress" | "completed"
-  slots: FilledSlot[]
-  story: StorySection[]
-  materials: ProjectMaterial[]
-  versions: ProjectVersion[]
-  suggestions: Suggestion[]
-  createdAt: Date
-  updatedAt: Date
+// ── Slide (Project) ──────────────────────────
+
+export interface Slide {
+  id: string;
+  owner_id: string;
+  template_id: string | null;
+  title: string;
+  images: string[];
+  created_at: string;
+  updated_at: string;
 }
 
-export interface FilledSlot {
-  slotId: string
-  slideIndex: number
-  name: string
-  type: "title" | "text" | "image" | "chart" | "list" | "icon"
-  value: string
-  status: "empty" | "draft" | "filled" | "approved"
-  linkedStoryId?: string
+export interface SlideListItem {
+  id: string;
+  title: string;
+  template_id: string | null;
+  images: string[];
+  updated_at: string;
 }
 
-export interface StorySection {
-  id: string
-  title: string
-  content: string
-  slideIndices: number[]
-  status: "draft" | "approved"
-  order: number
+// ── SlideVersion ─────────────────────────────
+
+export interface SlideVersion {
+  id: string;
+  slide_id: string;
+  version_num: number;
+  created_at: string;
 }
 
-export interface ProjectMaterial {
-  id: string
-  name: string
-  type: "icon" | "image" | "text" | "chart"
-  content: string
-  tags: string[]
-  usedInSlots: string[]
+// ── Page ─────────────────────────────────────
+
+export interface Page {
+  id: string;
+  slide_version_id: string;
+  page_num: number;
+  contents: unknown; // JSON
+  created_at: string;
+  updated_at: string;
 }
 
-export interface ProjectVersion {
-  id: string
-  name: string
-  description: string
-  slots: FilledSlot[]
-  story: StorySection[]
-  createdAt: Date
-}
+// ── Outline (骨子) ───────────────────────────
 
-export interface Suggestion {
-  id: string
-  type: "slot-update" | "story-sync" | "material-add"
-  message: string
-  sourceSlotId?: string
-  targetSlotIds?: string[]
-  suggestedValue?: string
-  dismissed: boolean
-  createdAt: Date
-}
-
-export interface ChatMessage {
-  id: string
-  role: "user" | "assistant" | "system"
-  content: string
-  timestamp: Date
-  // Context about what the message is referencing
-  context?: {
-    type: "slot" | "story" | "slide" | "general"
-    slotId?: string
-    slideIndex?: number
-    storyId?: string
-  }
-  // Actions suggested by AI
-  actions?: ChatAction[]
-}
-
-export interface ChatAction {
-  id: string
-  type: "fill-slot" | "update-story" | "approve" | "suggest-change"
-  label: string
-  targetId: string
-  value?: string
-  applied?: boolean
-}
-
-export interface HistoryItem {
-  id: string
-  projectId?: string
-  type: "project" | "template" | "slot" | "story" | "version"
-  action: string
-  description: string
-  timestamp: Date
+export interface Outline {
+  id: string;
+  slide_version_id: string;
+  title: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
 }

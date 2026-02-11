@@ -1,0 +1,25 @@
+{"location":"dashboard/page.tsx:useEffect","message":"Dashboard data fetch start","data":{"token":"dev-token-"},"timestamp":1770718268051,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:useEffect","message":"Dashboard data fetch start","data":{"token":"dev-token-"},"timestamp":1770718268052,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getSlides:ok","message":"getSlides succeeded","data":{"count":0},"timestamp":1770718268053,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getTemplates:ok","message":"getTemplates succeeded","data":{"count":0},"timestamp":1770718268053,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getSlides:ok","message":"getSlides succeeded","data":{"count":0},"timestamp":1770718268053,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getTemplates:ok","message":"getTemplates succeeded","data":{"count":0},"timestamp":1770718268053,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:useEffect","message":"Dashboard data fetch start","data":{"token":"dev-token-"},"timestamp":1770718296631,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:useEffect","message":"Dashboard data fetch start","data":{"token":"dev-token-"},"timestamp":1770718296633,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getSlides:ok","message":"getSlides succeeded","data":{"count":0},"timestamp":1770718296636,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getTemplates:ok","message":"getTemplates succeeded","data":{"count":0},"timestamp":1770718296642,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getSlides:ok","message":"getSlides succeeded","data":{"count":0},"timestamp":1770718296642,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getTemplates:ok","message":"getTemplates succeeded","data":{"count":0},"timestamp":1770718296642,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"lib/api.ts:createSlide:dev","message":"Dev mode slide created","data":{"slideId":"dev-1770718307889-jlk79n","versionId":"dev-1770718307889-tfygbh"},"timestamp":1770718307889,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:useEffect","message":"Dashboard data fetch start","data":{"token":"dev-token-"},"timestamp":1770718341040,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:useEffect","message":"Dashboard data fetch start","data":{"token":"dev-token-"},"timestamp":1770718341041,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getSlides:ok","message":"getSlides succeeded","data":{"count":0},"timestamp":1770718341043,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getTemplates:ok","message":"getTemplates succeeded","data":{"count":0},"timestamp":1770718341043,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getSlides:ok","message":"getSlides succeeded","data":{"count":0},"timestamp":1770718341043,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getTemplates:ok","message":"getTemplates succeeded","data":{"count":0},"timestamp":1770718341044,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:useEffect","message":"Dashboard data fetch start","data":{"token":"dev-token-"},"timestamp":1770718358142,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:useEffect","message":"Dashboard data fetch start","data":{"token":"dev-token-"},"timestamp":1770718358143,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getSlides:ok","message":"getSlides succeeded","data":{"count":0},"timestamp":1770718358144,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getTemplates:ok","message":"getTemplates succeeded","data":{"count":0},"timestamp":1770718358144,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getSlides:ok","message":"getSlides succeeded","data":{"count":0},"timestamp":1770718358144,"hypothesisId":"verify","runId":"post-fix"}
+{"location":"dashboard/page.tsx:getTemplates:ok","message":"getTemplates succeeded","data":{"count":0},"timestamp":1770718358144,"hypothesisId":"verify","runId":"post-fix"}

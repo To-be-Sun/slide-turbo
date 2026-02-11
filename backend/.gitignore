@@ -41,6 +41,9 @@ client_secret*.json
 *.db
 *.sqlite
 
+# Prisma generated client
+prisma/client/
+
 # Logs
 *.log
 

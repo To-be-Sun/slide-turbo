@@ -1,0 +1,54 @@
+services:
+  # ── PostgreSQL ──────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: slide-turbo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-slide_turbo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-slide_turbo}
+      POSTGRES_DB: ${POSTGRES_DB:-slide_turbo}
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-slide_turbo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend (FastAPI) ───────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: slide-turbo-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-slide_turbo}:${POSTGRES_PASSWORD:-slide_turbo}@db:5432/${POSTGRES_DB:-slide_turbo}
+      ENV: development
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3001/api/v1/users/auth/google/callback}
+      GOOGLE_REFRESH_TOKEN: ${GOOGLE_REFRESH_TOKEN:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend/app:/app/app        # ホットリロード用
+      - ./backend/prisma:/app/prisma  # スキーマ同期用
+    command: >
+      sh -c "
+        python -m prisma generate &&
+        python -m prisma db push --skip-generate &&
+        uvicorn app.main:app --host 0.0.0.0 --port 3001 --reload
+      "
+
+volumes:
+  postgres_data:

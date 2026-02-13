@@ -54,7 +54,7 @@ Google Cloud ConsoleからダウンロードしたJSONファイルを使用す�
 ```env
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-your-client-secret
-GOOGLE_REDIRECT_URI=http://localhost:3001/auth/callback
+GOOGLE_REDIRECT_URI=http://localhost:3000/login
 GOOGLE_REFRESH_TOKEN=your-refresh-token
 ```
 

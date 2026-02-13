@@ -76,7 +76,7 @@ GEMINI_API_KEY=your_gemini_api_key_here
 # JSONファイルを使う場合は以下は不要
 GOOGLE_CLIENT_ID=your_google_client_id_here
 GOOGLE_CLIENT_SECRET=your_google_client_secret_here
-GOOGLE_REDIRECT_URI=http://localhost:3001/auth/callback
+GOOGLE_REDIRECT_URI=http://localhost:3000/login
 GOOGLE_REFRESH_TOKEN=your_refresh_token_here
 
 # Server Configuration
@@ -109,7 +109,7 @@ FRONTEND_URL=http://localhost:3000
 1. [Google Cloud Console](https://console.cloud.google.com/)でプロジェクトを作成
 2. **Google Slides API** と **Google Drive API** を有効化
 3. OAuth 2.0認証情報を作成（ウェブアプリケーション）
-4. リダイレクトURIに `http://localhost:3001/auth/callback` を追加
+4. リダイレクトURIに `http://localhost:3000/login` を追加
 5. クライアントIDとシークレットを`.env`に設定、または`client_secret_*.json`ファイルを配置
 
 ### 5. 認証フローの実行
@@ -121,48 +121,53 @@ python -m app.main
 uvicorn app.main:app --reload --port 3001
 ```
 
-2. ブラウザで認証URLにアクセス：
+2. ブラウザでフロントエンドのログイン画面にアクセス：
 ```
-http://localhost:3001/api/google-slides/auth
+http://localhost:3000/login
 ```
 
-3. Googleアカウントで認証
+3. 「Google でログイン」をクリックして認証
 4. リフレッシュトークンを`.env`の`GOOGLE_REFRESH_TOKEN`に設定
 
 ## API エンドポイント
 
-### Google Slides
+### 認証・ユーザー
 
-- `GET /api/google-slides/auth` - 認証URLを取得
-- `GET /api/google-slides/callback` - OAuthコールバック
-- `POST /api/google-slides/import` - プレゼンテーションIDからインポート
-- `POST /api/google-slides/parse-url` - URLからインポート
-- `POST /api/google-slides/review-slide` - 単一スライドをレビュー
-
-### スライド生成
-
-- `POST /api/slides/generate` - テンプレートからスライドを生成
-- `POST /api/slides/fill-slot` - AIでスロットを埋める
-- `POST /api/slides/replace-slot` - HTML内のスロットを置き換え
-- `GET /api/slides/render/{slide_index}` - スライドを画像としてレンダリング
-
-### プロジェクト
-
-- `GET /api/projects` - プロジェクト一覧を取得
-- `GET /api/projects/{id}` - プロジェクトを取得
-- `POST /api/projects` - プロジェクトを作成
-- `PATCH /api/projects/{id}` - プロジェクトを更新
-- `DELETE /api/projects/{id}` - プロジェクトを削除
-- `PATCH /api/projects/{id}/slots/{slot_id}` - スロットを更新
-- `PATCH /api/projects/{id}/slots` - スロットを一括更新
+- `GET /api/v1/users/auth/google` - Google OAuth へリダイレクト
+- `POST /api/v1/users/auth/google/callback` - 認可コードを受け取りJWTを発行
+- `GET /api/v1/users/me` - ログイン中ユーザー取得
+- `PATCH /api/v1/users/me` - ユーザー更新
 
 ### テンプレート
 
-- `GET /api/templates` - テンプレート一覧を取得
-- `GET /api/templates/{id}` - テンプレートを取得
-- `POST /api/templates` - テンプレートを作成
-- `PATCH /api/templates/{id}` - テンプレートを更新
-- `DELETE /api/templates/{id}` - テンプレートを削除
+- `POST /api/v1/templates` - テンプレート作成
+- `POST /api/v1/templates/import` - Google Slides URLからテンプレートをインポート
+- `GET /api/v1/templates` - テンプレート一覧
+- `GET /api/v1/templates/{template_id}` - テンプレート詳細
+- `PATCH /api/v1/templates/{template_id}` - テンプレート更新
+- `DELETE /api/v1/templates/{template_id}` - テンプレート削除
+
+### スライド
+
+- `POST /api/v1/slides` - スライド作成
+- `GET /api/v1/slides` - スライド一覧
+- `GET /api/v1/slides/{slide_id}` - スライド詳細
+- `PATCH /api/v1/slides/{slide_id}` - スライド更新
+- `DELETE /api/v1/slides/{slide_id}` - スライド削除
+- `POST /api/v1/slides/{slide_id}/versions` - スライドの新規バージョン作成
+- `GET /api/v1/slides/{slide_id}/versions` - スライドのバージョン一覧
+- `POST /api/v1/slides/versions/{version_id}/pages` - ページ追加
+- `GET /api/v1/slides/versions/{version_id}/pages` - ページ一覧
+- `PATCH /api/v1/slides/pages/{page_id}` - ページ更新
+
+### 骨子（Outline）
+
+- `POST /api/v1/outlines` - 骨子作成
+- `GET /api/v1/outlines/by-version/{slide_version_id}` - バージョン単位で骨子一覧取得
+- `GET /api/v1/outlines/{outline_id}` - 骨子詳細
+- `PATCH /api/v1/outlines/{outline_id}` - 骨子更新
+- `DELETE /api/v1/outlines/{outline_id}` - 骨子削除
+- `POST /api/v1/outlines/refine` - 骨子のブラッシュアップ
 
 ## 開発
 
@@ -215,4 +220,3 @@ conda env create -f environment.yml
 - TypeScriptバックエンドからPythonバックエンドに移行しました
 - データベーススキーマは同じですが、PrismaからSQLAlchemyに変更されています
 - 古いTypeScriptファイルは`src/`ディレクトリに残っていますが、使用されていません
-

@@ -43,7 +43,7 @@ GEMINI_API_KEY=your_gemini_api_key_here
 # JSONファイルを使う場合は以下は不要
 GOOGLE_CLIENT_ID=your_google_client_id_here
 GOOGLE_CLIENT_SECRET=your_google_client_secret_here
-GOOGLE_REDIRECT_URI=http://localhost:3001/auth/callback
+GOOGLE_REDIRECT_URI=http://localhost:3000/login
 GOOGLE_REFRESH_TOKEN=your_refresh_token_here
 
 # Server Configuration
@@ -66,7 +66,7 @@ FRONTEND_URL=http://localhost:3000
 1. [Google Cloud Console](https://console.cloud.google.com/)でプロジェクトを作成
 2. **Google Slides API** と **Google Drive API** を有効化
 3. OAuth 2.0認証情報を作成（ウェブアプリケーション）
-4. リダイレクトURIに `http://localhost:3001/auth/callback` を追加
+4. リダイレクトURIに `http://localhost:3000/login` を追加
 5. クライアントIDとシークレットを`.env`に設定
 
 ### 4. 認証フローの実行
@@ -76,30 +76,39 @@ FRONTEND_URL=http://localhost:3000
 pnpm dev
 ```
 
-2. ブラウザで認証URLにアクセス：
+2. ブラウザでフロントエンドのログイン画面にアクセス：
 ```
-http://localhost:3001/api/google-slides/auth
+http://localhost:3000/login
 ```
 
-3. Googleアカウントで認証
+3. 「Google でログイン」をクリックして認証
 4. リフレッシュトークンを`.env`の`GOOGLE_REFRESH_TOKEN`に設定
 
 ## API エンドポイント
 
-### Google Slides
+### 認証・ユーザー
 
-- `GET /api/google-slides/auth` - 認証URLを取得
-- `GET /api/google-slides/callback` - OAuthコールバック
-- `POST /api/google-slides/import` - プレゼンテーションIDからインポート
-- `POST /api/google-slides/parse-url` - URLからインポート
-- `POST /api/google-slides/review-slide` - 単一スライドをレビュー
+- `GET /api/v1/users/auth/google` - Google OAuth へリダイレクト
+- `POST /api/v1/users/auth/google/callback` - 認可コードを受け取りJWTを発行
+- `GET /api/v1/users/me` - ログイン中ユーザー取得
+- `PATCH /api/v1/users/me` - ユーザー更新
 
-### スライド生成
+### テンプレート
 
-- `POST /api/slides/generate` - テンプレートからスライドを生成
-- `POST /api/slides/fill-slot` - AIでスロットを埋める
-- `POST /api/slides/replace-slot` - HTML内のスロットを置き換え
-- `GET /api/slides/render/:slideIndex` - スライドを画像としてレンダリング
+- `POST /api/v1/templates` - テンプレート作成
+- `POST /api/v1/templates/import` - Google Slides URLからテンプレートをインポート
+- `GET /api/v1/templates` - テンプレート一覧
+- `GET /api/v1/templates/{template_id}` - テンプレート詳細
+- `PATCH /api/v1/templates/{template_id}` - テンプレート更新
+- `DELETE /api/v1/templates/{template_id}` - テンプレート削除
+
+### スライド
+
+- `POST /api/v1/slides` - スライド作成
+- `GET /api/v1/slides` - スライド一覧
+- `GET /api/v1/slides/{slide_id}` - スライド詳細
+- `PATCH /api/v1/slides/{slide_id}` - スライド更新
+- `DELETE /api/v1/slides/{slide_id}` - スライド削除
 
 ## パイプライン
 
@@ -124,4 +133,3 @@ pnpm start
 # 型チェック
 pnpm type-check
 ```
-

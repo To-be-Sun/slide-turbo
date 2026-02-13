@@ -88,11 +88,11 @@
    - 「URIを追加」をクリック
    - 以下のURIを追加：
      ```
-     http://localhost:3001/auth/callback
+     http://localhost:3000/login
      ```
    - 本番環境用のURIも追加する場合：
      ```
-     https://yourdomain.com/auth/callback
+     https://yourdomain.com/login
      ```
 
 6. 「作成」をクリック
@@ -111,42 +111,40 @@
 # Google API Configuration
 GOOGLE_CLIENT_ID=ここにクライアントIDを貼り付け
 GOOGLE_CLIENT_SECRET=ここにクライアントシークレットを貼り付け
-GOOGLE_REDIRECT_URI=http://localhost:3001/auth/callback
+GOOGLE_REDIRECT_URI=http://localhost:3000/login
 ```
 
-### ステップ5: 認証フローの実行とリフレッシュトークンの取得
+### ステップ5: 認証フローの実行
 
 1. バックエンドサーバーを起動：
    ```bash
    cd backend
+   uvicorn app.main:app --reload --port 3001
+   ```
+
+2. フロントエンドを起動：
+   ```bash
+   cd frontend
    pnpm dev
    ```
 
-2. ブラウザで認証URLにアクセス：
+3. ブラウザでログイン画面にアクセス：
    ```
-   http://localhost:3001/api/google-slides/auth
+   http://localhost:3000/login
    ```
 
-3. 認証URLが表示されるので、そのURLをクリックまたはコピーしてブラウザで開く
-
-4. Googleアカウントでログイン（テストユーザーとして追加したアカウント）
+4. 「Google でログイン」をクリック
 
 5. アクセス許可を確認：
    - 「Slide Gen が次の権限をリクエストしています」と表示
    - 権限を確認して「許可」をクリック
 
-6. リダイレクト後、サーバーのコンソールにリフレッシュトークンが表示されます：
-   ```
-   Refresh token: 1//xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   Set this as GOOGLE_REFRESH_TOKEN in your .env file
-   ```
-
-7. `.env`ファイルにリフレッシュトークンを追加：
+6. Google Slides 取り込みで利用する場合、`.env` に `GOOGLE_REFRESH_TOKEN` を設定：
    ```env
    GOOGLE_REFRESH_TOKEN=ここにリフレッシュトークンを貼り付け
    ```
 
-8. サーバーを再起動
+7. 設定後にバックエンドを再起動
 
 ### ステップ6: 動作確認
 
@@ -156,19 +154,24 @@ GOOGLE_REDIRECT_URI=http://localhost:3001/auth/callback
    pnpm dev
    ```
 
-2. テンプレートページにアクセス：
+2. ログインページにアクセスして Google 認証：
+   ```
+   http://localhost:3000/login
+   ```
+
+3. テンプレートページにアクセス：
    ```
    http://localhost:3000/templates
    ```
 
-3. 「テンプレート追加」をクリック
+4. 「テンプレート追加」をクリック
 
-4. Google SlidesのURLを入力（例）：
+5. Google SlidesのURLを入力（例）：
    ```
    https://docs.google.com/presentation/d/YOUR_PRESENTATION_ID/edit
    ```
 
-5. 「読み込み」をクリックして動作確認
+6. 「読み込み」をクリックして動作確認
 
 ## トラブルシューティング
 
@@ -185,7 +188,7 @@ GOOGLE_REDIRECT_URI=http://localhost:3001/auth/callback
 ### エラー: "invalid_grant"
 
 - リフレッシュトークンが無効になっている可能性があります
-- ステップ5を再度実行して新しいリフレッシュトークンを取得してください
+- 新しいリフレッシュトークンを発行し、`.env` の `GOOGLE_REFRESH_TOKEN` を更新してください
 
 ### エラー: "API not enabled"
 

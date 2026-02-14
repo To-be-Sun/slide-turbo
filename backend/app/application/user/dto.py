@@ -34,4 +34,5 @@ class UserResponseDTO(BaseModel):
 class TokenResponseDTO(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    google_access_token: str | None = None
     user: UserResponseDTO

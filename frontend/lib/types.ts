@@ -16,6 +16,7 @@ export interface User {
 export interface TokenResponse {
   access_token: string;
   token_type: string;
+  google_access_token?: string | null;
   user: User;
 }
 

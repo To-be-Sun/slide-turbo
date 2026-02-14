@@ -17,6 +17,8 @@ import type {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const DEV_TOKEN = "dev-token-slide-turbo";
+const GOOGLE_TOKEN_EXPIRED_DETAIL =
+  "Google access token is invalid or expired. Please sign in again.";
 
 // ── Dev Mode Helper ─────────────────────────
 
@@ -32,17 +34,26 @@ function getToken(): string | null {
   return localStorage.getItem("token");
 }
 
+function getGoogleAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("google_access_token");
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const token = getToken();
+  const googleAccessToken = getGoogleAccessToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+  if (googleAccessToken) {
+    headers["X-Google-Access-Token"] = googleAccessToken;
   }
 
   const res = await fetch(`${API_BASE}${path}`, {
@@ -52,6 +63,18 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (
+      res.status === 401 &&
+      body.detail === GOOGLE_TOKEN_EXPIRED_DETAIL &&
+      typeof window !== "undefined"
+    ) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("google_access_token");
+      localStorage.removeItem("dev_user");
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login?reason=google_token_expired";
+      }
+    }
     throw new Error(body.detail || `API error: ${res.status}`);
   }
 
@@ -68,7 +91,9 @@ export function getGoogleAuthUrl(): string {
     return `${API_BASE}/api/v1/users/auth/google`;
   }
   const redirectUri = encodeURIComponent(`${window.location.origin}/login`);
-  const scope = encodeURIComponent("openid email profile");
+  const scope = encodeURIComponent(
+    "openid email profile https://www.googleapis.com/auth/presentations.readonly https://www.googleapis.com/auth/drive.readonly"
+  );
   return (
     `https://accounts.google.com/o/oauth2/v2/auth` +
     `?client_id=${clientId}` +
@@ -76,7 +101,8 @@ export function getGoogleAuthUrl(): string {
     `&response_type=code` +
     `&scope=${scope}` +
     `&access_type=offline` +
-    `&prompt=consent`
+    `&prompt=consent` +
+    `&include_granted_scopes=true`
   );
 }
 

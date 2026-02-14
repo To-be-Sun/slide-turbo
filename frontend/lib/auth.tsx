@@ -32,7 +32,7 @@ interface AuthContextValue {
   loading: boolean;
   token: string | null;
   isDevMode: boolean;
-  login: (token: string, user: User) => void;
+  login: (token: string, user: User, googleAccessToken?: string | null) => void;
   devLogin: () => void;
   logout: () => void;
 }
@@ -75,14 +75,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((u) => setUser(u))
       .catch(() => {
         localStorage.removeItem("token");
+        localStorage.removeItem("google_access_token");
         setToken(null);
       })
       .finally(() => setLoading(false));
   }, []);
 
   const login = useCallback(
-    (newToken: string, newUser: User) => {
+    (newToken: string, newUser: User, googleAccessToken?: string | null) => {
       localStorage.setItem("token", newToken);
+      if (googleAccessToken) {
+        localStorage.setItem("google_access_token", googleAccessToken);
+      }
       setToken(newToken);
       setUser(newUser);
     },
@@ -99,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem("token");
+    localStorage.removeItem("google_access_token");
     localStorage.removeItem("dev_user");
     setToken(null);
     setUser(null);

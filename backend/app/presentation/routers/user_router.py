@@ -2,6 +2,8 @@
 User Router — Google OAuth 認証 + ユーザー管理エンドポイント
 """
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse
 
@@ -18,6 +20,14 @@ from app.infrastructure.persistence.user_repository import UserRepository
 
 router = APIRouter(prefix="/users", tags=["users"])
 
+GOOGLE_OAUTH_SCOPES = [
+    "openid",
+    "email",
+    "profile",
+    "https://www.googleapis.com/auth/presentations.readonly",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
+
 
 def _get_usecases() -> UserUseCases:
     return UserUseCases(repo=UserRepository())
@@ -29,13 +39,16 @@ def _get_usecases() -> UserUseCases:
 @router.get("/auth/google")
 async def google_auth_redirect():
     """Google OAuth 認証画面へリダイレクト"""
-    params = (
-        f"client_id={settings.google_client_id}"
-        f"&redirect_uri={settings.google_redirect_uri}"
-        f"&response_type=code"
-        f"&scope=openid email profile"
-        f"&access_type=offline"
-        f"&prompt=consent"
+    params = urlencode(
+        {
+            "client_id": settings.google_client_id,
+            "redirect_uri": settings.google_redirect_uri,
+            "response_type": "code",
+            "scope": " ".join(GOOGLE_OAUTH_SCOPES),
+            "access_type": "offline",
+            "prompt": "consent",
+            "include_granted_scopes": "true",
+        }
     )
     return RedirectResponse(
         f"https://accounts.google.com/o/oauth2/v2/auth?{params}"
@@ -83,6 +96,7 @@ async def google_auth_callback(
         email=userinfo["email"],
         name=userinfo.get("name", ""),
         icon=userinfo.get("picture"),
+        google_access_token=tokens.get("access_token"),
     )
 
 

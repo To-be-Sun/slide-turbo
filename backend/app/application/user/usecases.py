@@ -21,7 +21,12 @@ class UserUseCases:
         self.repo = repo
 
     async def google_login(
-        self, google_id: str, email: str, name: str, icon: str | None
+        self,
+        google_id: str,
+        email: str,
+        name: str,
+        icon: str | None,
+        google_access_token: str | None = None,
     ) -> TokenResponseDTO:
         """
         Google OAuth コールバック後の処理。
@@ -40,6 +45,7 @@ class UserUseCases:
         token = create_access_token(data={"sub": user.id})
         return TokenResponseDTO(
             access_token=token,
+            google_access_token=google_access_token,
             user=UserResponseDTO(
                 id=user.id,
                 email=user.email,

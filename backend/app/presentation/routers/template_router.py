@@ -2,7 +2,7 @@
 Template Router — テンプレート管理エンドポイント
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 
 from app.application.template.dto import (
     CreateTemplateDTO,
@@ -44,9 +44,17 @@ async def create_template(
 async def import_from_google_slides(
     body: ImportFromGoogleSlidesDTO,
     current_user=Depends(get_current_user),
-    uc: TemplateUseCases = Depends(_get_usecases),
+    google_access_token: str | None = Header(
+        default=None, alias="X-Google-Access-Token"
+    ),
 ):
     """Google Slides からテンプレートをインポート"""
+    uc = TemplateUseCases(
+        repo=TemplateRepository(),
+        slides_parser=GoogleSlidesParser(
+            GoogleSlidesClient(access_token=google_access_token)
+        ),
+    )
     return await uc.import_from_google_slides(current_user.id, body)
 
 

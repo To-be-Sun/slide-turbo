@@ -54,7 +54,7 @@ function LoginContent() {
 
     googleCallback(code)
       .then((res) => {
-        login(res.access_token, res.user);
+        login(res.access_token, res.user, res.google_access_token ?? null);
         router.replace("/");
       })
       .catch((err) => {

@@ -1,19 +1,17 @@
 """
 Template UseCases
-テンプレートの登録・一覧取得・Google Slides からのインポート。
+テンプレートの一覧取得・Google Slides からのインポート。
 """
 
 from app.application.template.dto import (
-    CreateTemplateDTO,
     ImportFromGoogleSlidesDTO,
     TemplateListItemDTO,
     TemplateResponseDTO,
     UpdateTemplateDTO,
 )
-from app.domain.template.service import TemplateService
 from app.infrastructure.google_slides.parser import GoogleSlidesParser
 from app.infrastructure.persistence.template_repository import TemplateRepository
-from app.shared.exceptions import NotFoundException, ValidationException
+from app.shared.exceptions import NotFoundException
 
 
 class TemplateUseCases:
@@ -24,28 +22,6 @@ class TemplateUseCases:
     ):
         self.repo = repo
         self.slides_parser = slides_parser
-        self.service = TemplateService()
-
-    async def create(
-        self, owner_id: str, dto: CreateTemplateDTO
-    ) -> TemplateResponseDTO:
-        """テンプレートを手動登録"""
-        if not self.service.validate_contents(dto.contents):
-            raise ValidationException("Invalid template contents")
-
-        template = await self.repo.create(
-            owner_id=owner_id,
-            title=dto.title,
-            contents=dto.contents,
-        )
-        return TemplateResponseDTO(
-            id=template.id,
-            owner_id=template.owner_id,
-            title=template.title,
-            contents=template.contents,
-            created_at=template.created_at,
-            updated_at=template.updated_at,
-        )
 
     async def import_from_google_slides(
         self, owner_id: str, dto: ImportFromGoogleSlidesDTO

@@ -140,7 +140,6 @@ http://localhost:3000/login
 
 ### テンプレート
 
-- `POST /api/v1/templates` - テンプレート作成
 - `POST /api/v1/templates/import` - Google Slides URLからテンプレートをインポート
 - `GET /api/v1/templates` - テンプレート一覧
 - `GET /api/v1/templates/{template_id}` - テンプレート詳細

@@ -6,7 +6,6 @@ import {
   Layers,
   MoreHorizontal,
   Pencil,
-  Plus,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,7 +35,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TemplateListItem } from "@/lib/types";
 import {
   getTemplates,
-  createTemplate,
   importTemplate,
   deleteTemplate,
   updateTemplate,
@@ -45,10 +43,6 @@ import {
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<TemplateListItem[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // 新規作成
-  const [createOpen, setCreateOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
 
   // インポート
   const [importOpen, setImportOpen] = useState(false);
@@ -66,21 +60,6 @@ export default function TemplatesPage() {
       .catch(() => setTemplates([]))
       .finally(() => setLoading(false));
   }, []);
-
-  const handleCreate = async () => {
-    if (!newTitle.trim()) return;
-    try {
-      const t = await createTemplate({ title: newTitle, contents: {} });
-      setTemplates((prev) => [
-        { id: t.id, title: t.title, created_at: t.created_at },
-        ...prev,
-      ]);
-      setCreateOpen(false);
-      setNewTitle("");
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   const handleImport = async () => {
     if (!importUrl.trim()) return;
@@ -181,36 +160,6 @@ export default function TemplatesPage() {
             </DialogContent>
           </Dialog>
 
-          {/* Create */}
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                新規作成
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>テンプレートを作成</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-2 py-4">
-                <Label>タイトル</Label>
-                <Input
-                  placeholder="テンプレート名"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                />
-              </div>
-              <DialogFooter>
-                <Button
-                  onClick={handleCreate}
-                  disabled={!newTitle.trim()}
-                >
-                  作成
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </div>
       </div>
 
@@ -243,7 +192,7 @@ export default function TemplatesPage() {
             テンプレートがありません
           </p>
           <p className="mb-4 text-sm text-muted-foreground/70">
-            Google Slides からインポートするか、新規作成しましょう
+            Google Slides からインポートしましょう
           </p>
         </div>
       ) : (

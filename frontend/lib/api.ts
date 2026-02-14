@@ -152,21 +152,6 @@ export async function getTemplate(id: string): Promise<Template> {
   return request<Template>(`/api/v1/templates/${id}`);
 }
 
-export async function createTemplate(data: {
-  title: string;
-  contents: unknown;
-}): Promise<Template> {
-  if (isDevToken()) {
-    const t: Template = { id: uid(), owner_id: "dev-user-001", title: data.title, contents: data.contents, created_at: now(), updated_at: now() };
-    devStore.templates.push(t);
-    return t;
-  }
-  return request<Template>("/api/v1/templates", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-}
-
 export async function importTemplate(
   presentationUrl: string
 ): Promise<Template> {

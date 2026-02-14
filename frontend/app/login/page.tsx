@@ -41,11 +41,11 @@ function LoginContent() {
   }, [user, loading, router]);
 
   // 開発モード: 自動ログイン（コールバックでない場合）
-  useEffect(() => {
-    if (!loading && !user && isDevMode && !searchParams.get("code")) {
-      devLogin();
-    }
-  }, [loading, user, isDevMode, searchParams, devLogin]);
+  //useEffect(() => {
+  //  if (!loading && !user && isDevMode && !searchParams.get("code")) {
+  //    devLogin();
+  //  }
+  //}, [loading, user, isDevMode, searchParams, devLogin]);
 
   // Google OAuth コールバック処理
   useEffect(() => {

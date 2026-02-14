@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from prisma import Json
 from prisma.models import Template as PrismaTemplate
 
 from app.core.db import db
@@ -29,9 +30,9 @@ class TemplateRepository:
     ) -> Template:
         record = await db.template.create(
             data={
-                "ownerId": owner_id,
+                "owner": {"connect": {"id": owner_id}},
                 "title": title,
-                "contents": contents,
+                "contents": Json(contents),
             }
         )
         return _to_entity(record)

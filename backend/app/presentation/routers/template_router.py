@@ -5,7 +5,6 @@ Template Router — テンプレート管理エンドポイント
 from fastapi import APIRouter, Depends, Header
 
 from app.application.template.dto import (
-    CreateTemplateDTO,
     ImportFromGoogleSlidesDTO,
     TemplateListItemDTO,
     TemplateResponseDTO,
@@ -28,16 +27,6 @@ def _get_usecases() -> TemplateUseCases:
 
 
 # ── Endpoints ─────────────────────────────────────────
-
-
-@router.post("", response_model=TemplateResponseDTO, status_code=201)
-async def create_template(
-    body: CreateTemplateDTO,
-    current_user=Depends(get_current_user),
-    uc: TemplateUseCases = Depends(_get_usecases),
-):
-    """テンプレートを手動登録"""
-    return await uc.create(current_user.id, body)
 
 
 @router.post("/import", response_model=TemplateResponseDTO, status_code=201)

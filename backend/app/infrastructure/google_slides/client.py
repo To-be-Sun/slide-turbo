@@ -4,6 +4,7 @@ OAuth 認証フロー + Slides/Drive API のラッパー。
 """
 
 from google.oauth2.credentials import Credentials
+from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
 
@@ -40,6 +41,14 @@ class GoogleSlidesClient:
                 "Google authentication is missing. "
                 "Pass X-Google-Access-Token header or set GOOGLE_REFRESH_TOKEN."
             )
+        if (
+            not settings.google_client_id
+            or not settings.google_client_secret
+        ):
+            raise ValidationException(
+                "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required "
+                "when using GOOGLE_REFRESH_TOKEN."
+            )
         return Credentials(
             token=None,
             refresh_token=settings.google_refresh_token,
@@ -73,6 +82,11 @@ class GoogleSlidesClient:
                 .get(presentationId=presentation_id)
                 .execute()
             )
+        except RefreshError as e:
+            raise UnauthorizedException(
+                "Google access token is invalid or expired. "
+                "Please sign in again."
+            ) from e
         except HttpError as e:
             if e.resp.status == 403 and "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in str(e):
                 raise ForbiddenException(
@@ -101,6 +115,11 @@ class GoogleSlidesClient:
                 )
                 .execute()
             )
+        except RefreshError as e:
+            raise UnauthorizedException(
+                "Google access token is invalid or expired. "
+                "Please sign in again."
+            ) from e
         except HttpError as e:
             if e.resp.status == 403 and "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in str(e):
                 raise ForbiddenException(

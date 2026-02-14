@@ -2,6 +2,7 @@
   "name": "slide-gen-backend",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.28.2",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",

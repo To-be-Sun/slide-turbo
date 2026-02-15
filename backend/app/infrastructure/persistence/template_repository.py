@@ -4,6 +4,7 @@ Template リポジトリ — Prisma 経由の永続化実装
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from prisma.models import Template as PrismaTemplate
@@ -12,12 +13,20 @@ from app.core.db import db
 from app.domain.template.entity import Template
 
 
+def _ensure_json_serializable(obj: Any) -> Any:
+    """Prisma Json 用に JSON 互換の dict/list に正規化する"""
+    return json.loads(json.dumps(obj, default=str))
+
+
 def _to_entity(record: PrismaTemplate) -> Template:
+    raw = record.contents
+    if isinstance(raw, str):
+        raw = json.loads(raw) if raw.strip() else {}
     return Template(
         id=record.id,
         owner_id=record.ownerId,
         title=record.title,
-        contents=record.contents,
+        contents=raw,
         created_at=record.createdAt,
         updated_at=record.updatedAt,
     )
@@ -27,11 +36,13 @@ class TemplateRepository:
     async def create(
         self, *, owner_id: str, title: str, contents: Any
     ) -> Template:
+        contents_normalized = _ensure_json_serializable(contents)
+        contents_json = json.dumps(contents_normalized)
         record = await db.template.create(
             data={
-                "ownerId": owner_id,
                 "title": title,
-                "contents": contents,
+                "contents": contents_json,
+                "owner": {"connect": {"id": owner_id}},
             }
         )
         return _to_entity(record)
@@ -58,7 +69,7 @@ class TemplateRepository:
         if title is not None:
             data["title"] = title
         if contents is not None:
-            data["contents"] = contents
+            data["contents"] = json.dumps(_ensure_json_serializable(contents))
         if not data:
             return await self.find_by_id(template_id)
         record = await db.template.update(

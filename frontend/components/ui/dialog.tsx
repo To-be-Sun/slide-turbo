@@ -66,6 +66,10 @@ function DialogContent({
         {...props}
       >
         {children}
+        {/* 説明がないダイアログ用: アクセシビリティ警告を解消（画面上は非表示） */}
+        <DialogPrimitive.Description className="sr-only">
+          ダイアログ
+        </DialogPrimitive.Description>
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"

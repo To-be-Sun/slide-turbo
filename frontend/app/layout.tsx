@@ -4,10 +4,19 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
 
-const inter = Inter({ subsets: ["latin"] });
+// 使用するウェイトだけ指定してプリロード数を減らし「preload が使われない」警告を抑える
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+// モノスペースは一部でしか使わないため preload しない（警告抑制）
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
+  weight: ["400"],
   variable: "--font-mono",
+  display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {

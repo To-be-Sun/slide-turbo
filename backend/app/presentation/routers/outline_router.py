@@ -6,8 +6,10 @@ from fastapi import APIRouter, Depends
 
 from app.application.outline.dto import (
     CreateOutlineDTO,
+    GenerateSlideFromOutlineDTO,
     OutlineResponseDTO,
     RefineOutlineDTO,
+    SlideOutputResponseDTO,
     UpdateOutlineDTO,
 )
 from app.application.outline.usecases import OutlineUseCases
@@ -82,3 +84,13 @@ async def refine_outline(
 ):
     """マルチエージェントで骨子をブラッシュアップ"""
     return await uc.refine(body)
+
+
+@router.post("/generate-slide", response_model=SlideOutputResponseDTO)
+async def generate_slide_from_outline(
+    body: GenerateSlideFromOutlineDTO,
+    current_user=Depends(get_current_user),
+    uc: OutlineUseCases = Depends(_get_usecases),
+):
+    """骨子から1枚スライドJSONを multi-agent 生成"""
+    return await uc.generate_slide(body)

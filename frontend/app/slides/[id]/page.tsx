@@ -32,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SlideJsonCanvas } from "@/components/slide-json-canvas";
 import type { Outline, Page, Slide, SlideVersion } from "@/lib/types";
 import {
   getSlide,
@@ -43,7 +44,9 @@ import {
   deleteOutline,
   refineOutline,
   addPage,
+  deletePage,
   updatePage,
+  generateSlideFromOutline,
 } from "@/lib/api";
 
 export default function SlideEditorPage() {
@@ -165,6 +168,39 @@ export default function SlideEditorPage() {
     setEditingOutline(o.id);
     setEditTitle(o.title);
     setEditDesc(o.description);
+  };
+
+  const nextPageNum = (): number => {
+    if (pages.length === 0) return 1;
+    return Math.max(...pages.map((p) => p.page_num)) + 1;
+  };
+
+  const getPreviousSlideSummary = (currentPageNum: number): string | undefined => {
+    const prev = [...pages]
+      .filter((p) => p.page_num < currentPageNum)
+      .sort((a, b) => b.page_num - a.page_num)[0];
+    if (!prev || typeof prev.contents !== "object" || prev.contents === null) {
+      return undefined;
+    }
+
+    const c = prev.contents as { html?: string; slide_json?: unknown };
+    if (typeof c.html === "string" && c.html.trim()) {
+      return `Previous page ${prev.page_num}: HTML slide`;
+    }
+
+    const json = c.slide_json as
+      | { pageElements?: Array<{ shape?: { text?: { textElements?: Array<{ textRun?: { content?: string } }> } } }> }
+      | undefined;
+    const firstText = json?.pageElements
+      ?.flatMap((e) => e.shape?.text?.textElements ?? [])
+      .map((te) => te.textRun?.content ?? "")
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (firstText) {
+      return `Previous page ${prev.page_num}: ${firstText.slice(0, 120)}`;
+    }
+    return `Previous page ${prev.page_num}`;
   };
 
   if (loading) {
@@ -369,8 +405,9 @@ export default function SlideEditorPage() {
                 className="h-6 w-6"
                 onClick={async () => {
                   if (!currentVersion) return;
+                  const pageNum = nextPageNum();
                   const p = await addPage(currentVersion.id, {
-                    page_num: pages.length + 1,
+                    page_num: pageNum,
                     contents: { html: "<div class='slide'>新しいスライド</div>" },
                   });
                   setPages((prev) => [...prev, p]);
@@ -378,26 +415,84 @@ export default function SlideEditorPage() {
               >
                 <FilePlus className="h-3.5 w-3.5" />
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                title="骨子からAIで1枚生成"
+                onClick={async () => {
+                  if (!currentVersion || outlines.length === 0) return;
+                  const pageNum = nextPageNum();
+                  const outlineIndex = Math.min(
+                    Math.max(pageNum - 1, 0),
+                    outlines.length - 1
+                  );
+                  const targetOutline = outlines[outlineIndex];
+                  const output = await generateSlideFromOutline({
+                    outline_id: targetOutline.id,
+                    slide_object_id: `slide-mvp-${String(pageNum).padStart(3, "0")}`,
+                    page_num: pageNum,
+                    total_pages: Math.max(outlines.length, pageNum),
+                    previous_slide_summary: getPreviousSlideSummary(pageNum),
+                  });
+                  const p = await addPage(currentVersion.id, {
+                    page_num: pageNum,
+                    contents: { slide_json: output.slide },
+                  });
+                  setPages((prev) => [...prev, p]);
+                  setSelectedPage(pages.length);
+                }}
+              >
+                <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+              </Button>
             </div>
             <div className="space-y-2">
               {pages.map((p, i) => (
-                <button
+                <div
                   key={p.id}
+                  role="button"
+                  tabIndex={0}
                   className={`w-full rounded-lg border p-2 text-left transition-colors ${
                     selectedPage === i
                       ? "border-primary bg-primary/5"
                       : "hover:border-muted-foreground/30"
                   }`}
                   onClick={() => setSelectedPage(i)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedPage(i);
+                    }
+                  }}
                 >
                   <div className="mb-1 flex items-center gap-2">
                     <span className="text-xs font-mono text-muted-foreground">
                       {p.page_num}
                     </span>
                     <span className="truncate text-xs">ページ {p.page_num}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-auto h-5 w-5"
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!confirm(`ページ ${p.page_num} を削除しますか？`)) return;
+                        await deletePage(p.id);
+                        if (currentVersion) {
+                          const refreshed = await getPages(currentVersion.id);
+                          setPages(refreshed);
+                          setSelectedPage((prev) =>
+                            Math.min(prev, Math.max(0, refreshed.length - 1))
+                          );
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </Button>
                   </div>
                   <div className="aspect-video rounded bg-muted" />
-                </button>
+                </div>
               ))}
             </div>
           </div>
@@ -415,17 +510,36 @@ export default function SlideEditorPage() {
             {pages[selectedPage] ? (
               <div className="w-full max-w-4xl">
                 <div className="aspect-video w-full rounded-lg border bg-white shadow-lg">
-                  {/* ページの contents を HTML としてレンダリング */}
-                  <div
-                    className="flex h-full items-center justify-center p-8 text-black"
-                    dangerouslySetInnerHTML={{
-                      __html:
-                        typeof pages[selectedPage].contents === "object"
-                          ? (pages[selectedPage].contents as { html?: string })
-                              ?.html || "<p>コンテンツなし</p>"
-                          : String(pages[selectedPage].contents),
-                    }}
-                  />
+                  {(() => {
+                    const contents = pages[selectedPage].contents;
+                    const html =
+                      typeof contents === "object" && contents !== null
+                        ? (contents as { html?: string }).html
+                        : undefined;
+                    const slideJson =
+                      typeof contents === "object" && contents !== null
+                        ? (contents as { slide_json?: unknown }).slide_json
+                        : undefined;
+
+                    if (html) {
+                      return (
+                        <div
+                          className="flex h-full items-center justify-center p-8 text-black"
+                          dangerouslySetInnerHTML={{ __html: html }}
+                        />
+                      );
+                    }
+
+                    if (slideJson) {
+                      return <SlideJsonCanvas slide={slideJson} />;
+                    }
+
+                    return (
+                      <div className="flex h-full items-center justify-center p-8 text-black">
+                        コンテンツなし
+                      </div>
+                    );
+                  })()}
                 </div>
                 <p className="mt-3 text-center text-xs text-muted-foreground">
                   {selectedPage + 1} / {pages.length}

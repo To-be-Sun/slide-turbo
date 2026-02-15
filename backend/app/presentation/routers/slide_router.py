@@ -140,3 +140,12 @@ async def update_page(
 ):
     """ページ更新"""
     return await uc.update_page(page_id, body)
+
+
+@router.delete("/pages/{page_id}", status_code=204)
+async def delete_page(
+    page_id: str,
+    uc: SlideUseCases = Depends(_get_usecases),
+):
+    """ページ削除"""
+    await uc.delete_page(page_id)

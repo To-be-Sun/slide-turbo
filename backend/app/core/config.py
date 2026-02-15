@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     # --- Gemini API ---
     gemini_api_key: str = ""
+    gemini_model: str = "gemini-1.5-flash"
 
     # --- Server ---
     port: int = 3001

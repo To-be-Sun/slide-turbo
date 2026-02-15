@@ -1,10 +1,7 @@
 """
 Slide (Project) UseCases
-スライドの CRUD、バージョン管理、ページ操作。
+スライドの CRUD、バージョン管理、ページ操作、HTMLレンダリング、Google Slidesエクスポート。
 """
-
-import html
-from typing import Any
 
 from app.application.slide.dto import (
     CreatePageDTO,
@@ -13,163 +10,34 @@ from app.application.slide.dto import (
     SlideListItemDTO,
     SlideResponseDTO,
     SlideVersionResponseDTO,
-    SyncPageEditsDTO,
     UpdatePageDTO,
     UpdateSlideDTO,
 )
 from app.domain.slide.service import SlideService
 from app.infrastructure.persistence.slide_repository import SlideRepository
-from app.infrastructure.rendering import HTMLRenderer, SlidePresentation
+from app.infrastructure.rendering.html_renderer import HTMLRenderer
 from app.infrastructure.google_slides.exporter import GoogleSlidesExporter
-from app.infrastructure.persistence.template_repository import (
-    TemplateRepository,
-)
 from app.shared.exceptions import NotFoundException
 
 
-def _template_elements_to_html(elements: list[dict[str, Any]]) -> str:
-    """テンプレートの elements（shape/image/shape_rect）を表示用 HTML に変換。位置・サイズ・塗りつぶしを反映。"""
-    parts: list[str] = []
-    has_layout = any(
-        (el.get("width_pct") or 0) > 0 or (el.get("height_pct") or 0) > 0
-        for el in elements
-    )
-    for i, el in enumerate(elements):
-        el_type = el.get("type", "unknown")
-        style_parts: list[str] = []
-        if has_layout:
-            left = el.get("left_pct")
-            top = el.get("top_pct")
-            w = el.get("width_pct")
-            h = el.get("height_pct")
-            if left is not None:
-                style_parts.append(f"left:{left}%")
-            if top is not None:
-                style_parts.append(f"top:{top}%")
-            if w is not None and w > 0:
-                style_parts.append(f"width:{w}%")
-            elif el_type in ("shape", "shape_rect"):
-                style_parts.append("width:80%")
-            if h is not None and h > 0:
-                style_parts.append(f"height:{h}%")
-            elif el_type == "shape":
-                style_parts.append("min-height:1.2em")
-            elif el_type == "shape_rect":
-                style_parts.append("min-height:10%")
-            if style_parts:
-                style_parts.extend(["position:absolute", "margin:0", "box-sizing:border-box", f"z-index:{i}"])
-        fill = el.get("fill")
-        if fill:
-            style_parts.append(f"background-color:{fill}")
-        style_str = (" style=\"" + ";".join(style_parts) + "\"") if style_parts else ""
-
-        if el_type == "shape" and "text" in el:
-            text = (el["text"] or "").strip()
-            if text:
-                css_cls = "slide-element slide-text"
-                parts.append(f"<p class=\"{css_cls}\"{style_str}>{html.escape(text)}</p>")
-        elif el_type == "shape_rect":
-            css_cls = "slide-element slide-rect"
-            parts.append(f"<div class=\"{css_cls}\"{style_str}></div>")
-        elif el_type == "image":
-            url = el.get("contentUrl") or el.get("sourceUrl", "")
-            if url:
-                img_style = ";".join(style_parts) + ";object-fit:contain;" if style_parts else "max-width:100%;height:auto;"
-                parts.append(
-                    f'<img src="{html.escape(url)}" alt="" class="slide-element slide-image" style="{img_style}" />'
-                )
-    if not parts:
-        return "<div class='slide slide-canvas'><p class='text-muted-foreground'>（空のスライド）</p></div>"
-    wrapper_class = "slide slide-canvas" if has_layout else "slide"
-    return "<div class='" + wrapper_class + "'>" + "".join(parts) + "</div>"
-
-
-def _template_contents_to_pages(contents: Any) -> list[tuple[int, dict[str, Any]]]:
-    """
-    テンプレートの contents から (page_num, page_contents) のリストを返す。
-    contents が { "pages": [ { "pageNum", "elements", "pageObjectId" } ], "presentationId"?, "pageSize"?: { widthPt, heightPt } } 形式でない場合は空リスト。
-    presentationId, pageObjectId はハイブリッドレンダリング（getThumbnail + Sync）に使用。
-    """
-    if not isinstance(contents, dict):
-        return []
-    pages = contents.get("pages")
-    if not isinstance(pages, list):
-        return []
-    page_size = contents.get("pageSize")
-    if not isinstance(page_size, dict):
-        page_size = None
-    presentation_id = contents.get("presentationId")
-    if not isinstance(presentation_id, str):
-        presentation_id = None
-    result: list[tuple[int, dict[str, Any]]] = []
-    for p in pages:
-        if not isinstance(p, dict):
-            continue
-        page_num = p.get("pageNum")
-        elements = p.get("elements")
-        if page_num is None or not isinstance(elements, list):
-            continue
-        page_contents: dict[str, Any] = {
-            "elements": elements,
-            "html": _template_elements_to_html(elements),
-        }
-        if page_size:
-            page_contents["pageSize"] = page_size
-        if presentation_id:
-            page_contents["presentationId"] = presentation_id
-        page_object_id = p.get("pageObjectId")
-        if isinstance(page_object_id, str):
-            page_contents["pageObjectId"] = page_object_id
-        result.append((int(page_num), page_contents))
-    return result
-
-
 class SlideUseCases:
-    def __init__(
-        self,
-        repo: SlideRepository,
-        google_slides_exporter: GoogleSlidesExporter | None = None,
-        template_repo: TemplateRepository | None = None,
-        slides_client=None,
-    ):
+    def __init__(self, repo: SlideRepository):
         self.repo = repo
-        self.template_repo = template_repo or TemplateRepository()
         self.service = SlideService()
-        self.google_slides_exporter = google_slides_exporter
-        self._slides_client = slides_client
 
     # ── Slide CRUD ────────────────────────────────────
 
     async def create(
         self, owner_id: str, dto: CreateSlideDTO
     ) -> SlideResponseDTO:
-        """新規スライドプロジェクト作成 + version 1 を自動生成。テンプレート指定時はそのページを初期表示用にコピー。"""
-        template = None
-        if dto.template_id:
-            template = await self.template_repo.find_by_id(dto.template_id)
-            if not template or template.owner_id != owner_id:
-                raise NotFoundException("Template", dto.template_id or "")
-
+        """新規スライドプロジェクト作成 + version 1 を自動生成"""
         slide = await self.repo.create_slide(
             owner_id=owner_id,
             title=dto.title,
             template_id=dto.template_id,
         )
-        version = await self.repo.create_version(
-            slide_id=slide.id, version_num=1
-        )
-
-        # テンプレートのページはコピーせず、1ページのプレースホルダーのみ追加
-        placeholder_html = (
-            "<div class='slide'><p class='text-muted-foreground'>新しいスライド。左パネルの + からページを追加してください。</p></div>"
-            if dto.template_id
-            else "<div class='slide'><p class='text-muted-foreground'>新しいスライド</p></div>"
-        )
-        await self.repo.create_page(
-            slide_version_id=version.id,
-            page_num=1,
-            contents={"html": placeholder_html, "elements": []},
-        )
+        # version 1 を自動生成
+        await self.repo.create_version(slide_id=slide.id, version_num=1)
 
         return SlideResponseDTO(
             id=slide.id,
@@ -272,9 +140,16 @@ class SlideUseCases:
         self, version_id: str, dto: CreatePageDTO
     ) -> PageResponseDTO:
         """ページ追加"""
+        # page_num 衝突時は末尾へ自動採番して Unique 制約違反を回避する
+        pages = await self.repo.find_pages_by_version(version_id)
+        existing_nums = {p.page_num for p in pages}
+        page_num = dto.page_num
+        if page_num in existing_nums:
+            page_num = (max(existing_nums) if existing_nums else 0) + 1
+
         page = await self.repo.create_page(
             slide_version_id=version_id,
-            page_num=dto.page_num,
+            page_num=page_num,
             contents=dto.contents,
         )
         return PageResponseDTO(
@@ -317,156 +192,93 @@ class SlideUseCases:
             for p in pages
         ]
 
-    # ── Preview ───────────────────────────────────────
+    async def delete_page(self, page_id: str) -> None:
+        """ページ削除"""
+        page = await self.repo.find_page_by_id(page_id)
+        if page is None:
+            raise NotFoundException("Page", page_id)
 
-    async def render_preview(self, slide_id: str, version_num: int) -> str:
-        """指定バージョンのスライドをHTMLプレビュー生成"""
-        # スライド存在確認
+        deleted = await self.repo.delete_page(page_id)
+        if not deleted:
+            raise NotFoundException("Page", page_id)
+
+        # 削除後に page_num を 1..N へ詰め直す
+        pages = await self.repo.find_pages_by_version(page.slide_version_id)
+        for index, p in enumerate(pages, start=1):
+            if p.page_num != index:
+                await self.repo.update_page_num(p.id, page_num=index)
+
+    # ── Rendering & Export ────────────────────────────
+
+    async def render_preview(self, slide_id: str, version_num: int | None = None) -> str:
+        """スライドのHTMLプレビュー生成
+        
+        Args:
+            slide_id: スライドID
+            version_num: バージョン番号（Noneの場合は最新）
+        
+        Returns:
+            HTML文字列
+        """
         slide = await self.repo.find_slide_by_id(slide_id)
-        if not slide:
-            raise NotFoundException(f"Slide {slide_id} not found")
-
+        if slide is None:
+            raise NotFoundException("Slide", slide_id)
+        
         # バージョン取得
-        version = await self.repo.find_version_by_num(slide_id, version_num)
-        if not version:
-            raise NotFoundException(
-                f"Version {version_num} not found for slide {slide_id}"
-            )
-
-        # ページ一覧取得
-        pages = await self.repo.find_pages_by_version(version.id)
-        if not pages:
-            # ページがない場合は空のプレゼンテーション
-            presentation = SlidePresentation(
-                title=slide.title or "Untitled", pages=[]
-            )
+        if version_num is None:
+            version = await self.repo.find_latest_version(slide_id)
         else:
-            # 各ページのcontentsを統合してSlidePresentation作成
-            page_data = []
-            for page in sorted(pages, key=lambda p: p.page_num):
-                if page.contents:
-                    page_data.append(page.contents)
-
-            presentation = SlidePresentation(
-                title=slide.title or "Untitled", pages=page_data
-            )
-
-        # HTML生成
+            versions = await self.repo.find_versions_by_slide(slide_id)
+            version = next((v for v in versions if v.version_num == version_num), None)
+        
+        if version is None:
+            raise NotFoundException("SlideVersion", f"{slide_id}/v{version_num or 'latest'}")
+        
+        # ページ取得（Google Slides API形式のcontents）
+        pages = await self.repo.find_pages_by_version(version.id)
+        page_data_list = [p.contents for p in pages]  # contents = dict[str, Any]
+        
+        # HTMLレンダリング
         renderer = HTMLRenderer()
-        return renderer.render_presentation(presentation)
-
-    # ── Export ────────────────────────────────────────
-
+        html = renderer.render_presentation(title=slide.title, pages=page_data_list)
+        return html
+    
     async def export_to_google_slides(
-        self, slide_id: str, version_num: int
-    ) -> dict[str, str]:
-        """指定バージョンのスライドをGoogle Slidesにエクスポート"""
-        if not self.google_slides_exporter:
-            raise NotFoundException(
-                "Google Slides exporter is not configured"
-            )
-
-        # スライド存在確認
+        self, slide_id: str, version_num: int | None = None, owner_email: str | None = None
+    ) -> str:
+        """Google Slidesへエクスポート
+        
+        Args:
+            slide_id: スライドID
+            version_num: バージョン番号（Noneの場合は最新）
+            owner_email: Google Slidesの共有先メールアドレス
+        
+        Returns:
+            作成されたGoogle SlidesのプレゼンテーションID
+        """
         slide = await self.repo.find_slide_by_id(slide_id)
-        if not slide:
-            raise NotFoundException(f"Slide {slide_id} not found")
-
+        if slide is None:
+            raise NotFoundException("Slide", slide_id)
+        
         # バージョン取得
-        version = await self.repo.find_version_by_num(slide_id, version_num)
-        if not version:
-            raise NotFoundException(
-                f"Version {version_num} not found for slide {slide_id}"
-            )
-
-        # ページ一覧取得
-        pages = await self.repo.find_pages_by_version(version.id)
-        if not pages:
-            # ページがない場合は空のプレゼンテーション
-            presentation = SlidePresentation(
-                title=slide.title or "Untitled", pages=[]
-            )
+        if version_num is None:
+            version = await self.repo.find_latest_version(slide_id)
         else:
-            # 各ページのcontentsを統合してSlidePresentation作成
-            page_data = []
-            for page in sorted(pages, key=lambda p: p.page_num):
-                if page.contents:
-                    page_data.append(page.contents)
-
-            presentation = SlidePresentation(
-                title=slide.title or "Untitled", pages=page_data
-            )
-
-        # Google Slidesにエクスポート
-        result = await self.google_slides_exporter.export_presentation(
-            presentation
+            versions = await self.repo.find_versions_by_slide(slide_id)
+            version = next((v for v in versions if v.version_num == version_num), None)
+        
+        if version is None:
+            raise NotFoundException("SlideVersion", f"{slide_id}/v{version_num or 'latest'}")
+        
+        # ページ取得（Google Slides API形式のcontents）
+        pages = await self.repo.find_pages_by_version(version.id)
+        page_data_list = [p.contents for p in pages]
+        
+        # Google Slidesエクスポート
+        exporter = GoogleSlidesExporter()
+        presentation_id = await exporter.create_presentation(
+            title=slide.title,
+            pages=page_data_list,
+            owner_email=owner_email,
         )
-        return result
-
-    # ── Hybrid Rendering ──────────────────────────────
-
-    async def get_page_thumbnail_url(self, page_id: str) -> str | None:
-        """
-        ページのサムネイル URL を取得（ハイブリッドレンダリング用）。
-        page contents に presentationId と pageObjectId がある場合のみ Google API を呼ぶ。
-        """
-        page = await self.repo.find_page_by_id(page_id)
-        if page is None or not self._slides_client:
-            return None
-        contents = page.contents
-        if not isinstance(contents, dict):
-            return None
-        presentation_id = contents.get("presentationId")
-        page_object_id = contents.get("pageObjectId")
-        if not isinstance(presentation_id, str) or not isinstance(
-            page_object_id, str
-        ):
-            return None
-        try:
-            return self._slides_client.get_slide_thumbnail(
-                presentation_id, page_object_id
-            ) or None
-        except Exception:
-            return None
-
-    async def sync_page_edits(
-        self, page_id: str, dto: SyncPageEditsDTO
-    ) -> bool:
-        """
-        ページ内のテキスト編集を Google スライドに反映（presentations.batchUpdate）。
-        edits: 各 Shape の objectId と新しいテキスト。
-        """
-        page = await self.repo.find_page_by_id(page_id)
-        if page is None or not self._slides_client:
-            return False
-        contents = page.contents
-        if not isinstance(contents, dict):
-            return False
-        presentation_id = contents.get("presentationId")
-        if not isinstance(presentation_id, str):
-            return False
-        requests: list[dict] = []
-        for edit in dto.edits:
-            obj_id = edit.object_id
-            text = edit.text or ""
-            # 1. 既存テキストを全削除
-            requests.append(
-                {"deleteText": {"objectId": obj_id}}
-            )
-            # 2. 新しいテキストを先頭に挿入
-            if text:
-                requests.append(
-                    {
-                        "insertText": {
-                            "objectId": obj_id,
-                            "text": text,
-                            "insertionIndex": 0,
-                        }
-                    }
-                )
-        if not requests:
-            return True
-        try:
-            self._slides_client.batch_update(presentation_id, requests)
-            return True
-        except Exception:
-            return False
+        return presentation_id

@@ -4,9 +4,9 @@ Slide / SlideVersion / Page リポジトリ — Prisma 経由の永続化実装
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
+from prisma import Json
 from prisma.models import Page as PrismaPage
 from prisma.models import Slide as PrismaSlide
 from prisma.models import SlideVersion as PrismaSlideVersion
@@ -40,14 +40,11 @@ def _to_version(record: PrismaSlideVersion) -> SlideVersion:
 
 
 def _to_page(record: PrismaPage) -> Page:
-    raw = record.contents
-    if isinstance(raw, str):
-        raw = json.loads(raw) if raw.strip() else {}
     return Page(
         id=record.id,
         slide_version_id=record.slideVersionId,
         page_num=record.pageNum,
-        contents=raw,
+        contents=record.contents,
         created_at=record.createdAt,
         updated_at=record.updatedAt,
     )
@@ -64,11 +61,11 @@ class SlideRepository:
         template_id: str | None = None,
     ) -> Slide:
         data: dict[str, Any] = {
+            "ownerId": owner_id,
             "title": title,
-            "owner": {"connect": {"id": owner_id}},
         }
         if template_id:
-            data["template"] = {"connect": {"id": template_id}}
+            data["templateId"] = template_id
         record = await db.slide.create(data=data)
         return _to_slide(record)
 
@@ -107,10 +104,7 @@ class SlideRepository:
         self, *, slide_id: str, version_num: int
     ) -> SlideVersion:
         record = await db.slideversion.create(
-            data={
-                "versionNum": version_num,
-                "slide": {"connect": {"id": slide_id}},
-            }
+            data={"slideId": slide_id, "versionNum": version_num}
         )
         return _to_version(record)
 
@@ -120,15 +114,6 @@ class SlideRepository:
         record = await db.slideversion.find_first(
             where={"slideId": slide_id},
             order={"versionNum": "desc"},
-        )
-        return _to_version(record) if record else None
-
-    async def find_version_by_num(
-        self, slide_id: str, version_num: int
-    ) -> SlideVersion | None:
-        """指定スライドの特定バージョンを取得"""
-        record = await db.slideversion.find_first(
-            where={"slideId": slide_id, "versionNum": version_num}
         )
         return _to_version(record) if record else None
 
@@ -150,23 +135,14 @@ class SlideRepository:
         page_num: int,
         contents: Any,
     ) -> Page:
-        contents_json = (
-            contents
-            if isinstance(contents, str)
-            else json.dumps(json.loads(json.dumps(contents, default=str)))
-        )
         record = await db.page.create(
             data={
+                "slideVersionId": slide_version_id,
                 "pageNum": page_num,
-                "contents": contents_json,
-                "slideVersion": {"connect": {"id": slide_version_id}},
+                "contents": Json(contents),
             }
         )
         return _to_page(record)
-
-    async def find_page_by_id(self, page_id: str) -> Page | None:
-        record = await db.page.find_unique(where={"id": page_id})
-        return _to_page(record) if record else None
 
     async def find_pages_by_version(
         self, version_id: str
@@ -177,17 +153,25 @@ class SlideRepository:
         )
         return [_to_page(r) for r in records]
 
+    async def find_page_by_id(self, page_id: str) -> Page | None:
+        record = await db.page.find_unique(where={"id": page_id})
+        return _to_page(record) if record else None
+
     async def update_page(
         self, page_id: str, *, contents: Any
     ) -> Page | None:
-        contents_json = (
-            contents
-            if isinstance(contents, str)
-            else json.dumps(json.loads(json.dumps(contents, default=str)))
-        )
         record = await db.page.update(
             where={"id": page_id},
-            data={"contents": contents_json},
+            data={"contents": Json(contents)},
+        )
+        return _to_page(record) if record else None
+
+    async def update_page_num(
+        self, page_id: str, *, page_num: int
+    ) -> Page | None:
+        record = await db.page.update(
+            where={"id": page_id},
+            data={"pageNum": page_num},
         )
         return _to_page(record) if record else None
 

@@ -2,8 +2,8 @@
 Slide (Project) Router — スライドプロジェクト管理エンドポイント
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.application.slide.dto import (
     CreatePageDTO,
@@ -12,29 +12,18 @@ from app.application.slide.dto import (
     SlideListItemDTO,
     SlideResponseDTO,
     SlideVersionResponseDTO,
-    SyncPageEditsDTO,
     UpdatePageDTO,
     UpdateSlideDTO,
 )
 from app.application.slide.usecases import SlideUseCases
 from app.core.auth import get_current_user
-from app.infrastructure.google_slides.client import GoogleSlidesClient
-from app.infrastructure.google_slides.exporter import GoogleSlidesExporter
 from app.infrastructure.persistence.slide_repository import SlideRepository
-from app.infrastructure.persistence.template_repository import (
-    TemplateRepository,
-)
 
 router = APIRouter(prefix="/slides", tags=["slides"])
 
 
 def _get_usecases() -> SlideUseCases:
-    return SlideUseCases(
-        repo=SlideRepository(),
-        google_slides_exporter=GoogleSlidesExporter(GoogleSlidesClient()),
-        template_repo=TemplateRepository(),
-        slides_client=GoogleSlidesClient(),
-    )
+    return SlideUseCases(repo=SlideRepository())
 
 
 # ── Slide CRUD ────────────────────────────────────────
@@ -85,6 +74,41 @@ async def delete_slide(
 ):
     """スライド削除"""
     await uc.delete(slide_id)
+
+
+# ── Rendering & Export ────────────────────────────────
+
+
+@router.get("/{slide_id}/preview", response_class=HTMLResponse)
+async def preview_slide(
+    slide_id: str,
+    version_num: int | None = Query(None, description="バージョン番号（省略時は最新）"),
+    uc: SlideUseCases = Depends(_get_usecases),
+):
+    """スライドHTMLプレビュー生成"""
+    html = await uc.render_preview(slide_id, version_num)
+    return HTMLResponse(content=html)
+
+
+@router.post("/{slide_id}/export")
+async def export_slide_to_google_slides(
+    slide_id: str,
+    version_num: int | None = Query(None, description="バージョン番号（省略時は最新）"),
+    owner_email: str | None = Query(None, description="共有先メールアドレス"),
+    current_user=Depends(get_current_user),
+    uc: SlideUseCases = Depends(_get_usecases),
+):
+    """Google Slidesへエクスポート"""
+    presentation_id = await uc.export_to_google_slides(
+        slide_id=slide_id,
+        version_num=version_num,
+        owner_email=owner_email,
+    )
+    return JSONResponse({
+        "presentationId": presentation_id,
+        "presentationUrl": f"https://docs.google.com/presentation/d/{presentation_id}/edit",
+        "downloadUrl": f"https://docs.google.com/presentation/d/{presentation_id}/export/pptx",
+    })
 
 
 # ── Version ───────────────────────────────────────────
@@ -154,68 +178,10 @@ async def update_page(
     return await uc.update_page(page_id, body)
 
 
-# ── Preview ───────────────────────────────────────────
-
-
-@router.get("/{slide_id}/preview", response_class=HTMLResponse)
-async def preview_slide(
-    slide_id: str,
-    version: int = Query(1, description="プレビューするバージョン番号"),
-    uc: SlideUseCases = Depends(_get_usecases),
-):
-    """スライドHTMLプレビュー生成 (手動リフレッシュ)"""
-    html_content = await uc.render_preview(slide_id, version)
-    return HTMLResponse(content=html_content)
-
-
-@router.post("/{slide_id}/export/google-slides")
-async def export_to_google_slides(
-    slide_id: str,
-    version: int = Query(1, description="エクスポートするバージョン番号"),
-    uc: SlideUseCases = Depends(_get_usecases),
-):
-    """Google Slidesエクスポート"""
-    result = await uc.export_to_google_slides(slide_id, version)
-    return {"success": True, "data": result}
-
-
-# ── Hybrid Rendering ──────────────────────────────────
-
-
-@router.get("/pages/{page_id}/thumbnail")
-async def get_page_thumbnail(
+@router.delete("/pages/{page_id}", status_code=204)
+async def delete_page(
     page_id: str,
-    current_user=Depends(get_current_user),
     uc: SlideUseCases = Depends(_get_usecases),
 ):
-    """
-    ページのサムネイル URL 取得（ハイブリッドレンダリング用）。
-    presentationId + pageObjectId が page contents にある場合のみ Google API を呼ぶ。
-    """
-    url = await uc.get_page_thumbnail_url(page_id)
-    if url is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Thumbnail not available (page may not be from Google Slides)",
-        )
-    return {"url": url}
-
-
-@router.post("/pages/{page_id}/sync")
-async def sync_page_edits(
-    page_id: str,
-    body: SyncPageEditsDTO,
-    current_user=Depends(get_current_user),
-    uc: SlideUseCases = Depends(_get_usecases),
-):
-    """
-    ページ内のテキスト編集を Google スライドに反映。
-    edits: [{ object_id: Shape の objectId, text: 新しいテキスト }]
-    """
-    ok = await uc.sync_page_edits(page_id, body)
-    if not ok:
-        raise HTTPException(
-            status_code=503,
-            detail="Sync failed (check presentationId and Google API credentials)",
-        )
-    return {"ok": True}
+    """ページ削除"""
+    await uc.delete_page(page_id)

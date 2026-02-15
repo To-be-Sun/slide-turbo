@@ -87,3 +87,8 @@ export interface Outline {
   created_at: string;
   updated_at: string;
 }
+
+export interface SlideOutput {
+  outline_id: string;
+  slide: unknown;
+}

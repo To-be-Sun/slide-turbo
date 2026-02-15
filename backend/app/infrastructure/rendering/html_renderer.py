@@ -1,192 +1,170 @@
 """
 JSON → HTML変換レンダラー
-スライドプレゼンテーションをHTMLプレビューに変換
+Google Slides API生フォーマット（pageElements構造）をHTMLプレビューに変換
 """
 
 import html
-from typing import Union
-from app.infrastructure.rendering.schema import (
-    SlidePresentation,
-    SlidePage,
-    TextElement,
-    ImageElement,
-    ShapeElement,
-    ChartElement,
-    TableElement,
-    BackgroundStyle,
-)
+from typing import Any
 
 
 class HTMLRenderer:
-    """スライドプレゼンテーションをHTMLに変換するレンダラー"""
+    """Google Slides API生フォーマットのスライドをHTMLに変換するレンダラー"""
+    
+    # PT (points) to PX conversion: 1pt = 1.333px (96 DPI standard)
+    PT_TO_PX = 1.333
 
-    def render_presentation(self, presentation: SlidePresentation) -> str:
-        """プレゼンテーション全体のHTML生成"""
+    def render_presentation(self, title: str, pages: list[dict[str, Any]]) -> str:
+        """プレゼンテーション全体のHTML生成
+        
+        Args:
+            title: プレゼンテーションタイトル
+            pages: Google Slides API形式のページ配列 [{objectId, pageElements: [...]}]
+        """
         pages_html = ""
-        for page in presentation.pages:
-            pages_html += self.render_page(page)
+        for idx, page in enumerate(pages):
+            pages_html += self.render_page(page, page_num=idx + 1)
 
         return f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{self._escape_html(presentation.title)}</title>
+    <title>{self._escape_html(title)}</title>
     <style>{self._get_base_styles()}</style>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="presentation-container">
-        <h1 class="presentation-title">{self._escape_html(presentation.title)}</h1>
+        <h1 class="presentation-title">{self._escape_html(title)}</h1>
         <div class="slides-container">
             {pages_html}
         </div>
         <div class="navigation-info">
-            <p>矢印キー（←/→）でページ移動 | 全ページ数: {len(presentation.pages)}</p>
+            <p>矢印キー（←/→）でページ移動 | 全ページ数: {len(pages)}</p>
         </div>
     </div>
     <script>{self._get_base_scripts()}</script>
 </body>
 </html>"""
 
-    def render_page(self, page: SlidePage) -> str:
-        """単一ページのHTML生成"""
-        background_style = self._render_background(page.background)
+    def render_page(self, page: dict[str, Any], page_num: int) -> str:
+        """単一ページのHTML生成
+        
+        Args:
+            page: Google Slides API形式のページ {objectId, pageElements: [...]}
+            page_num: ページ番号（表示用）
+        """
+        page_elements = page.get("pageElements", [])
         elements_html = ""
         
-        for element in page.elements:
+        for element in page_elements:
             elements_html += self._render_element(element)
 
-        notes_html = ""
-        if page.notes:
-            notes_html = f'<div class="slide-notes">{self._escape_html(page.notes)}</div>'
-
         return f"""
-        <div class="slide" data-page-num="{page.page_num}" style="{background_style}">
-            <div class="slide-content" data-layout="{page.layout}">
+        <div class="slide" data-page-num="{page_num}">
+            <div class="slide-content">
                 {elements_html}
             </div>
-            {notes_html}
         </div>
         """
 
-    def _render_element(
-        self, element: Union[TextElement, ImageElement, ShapeElement, ChartElement, TableElement]
-    ) -> str:
-        """要素タイプごとに分岐"""
-        if isinstance(element, TextElement):
-            return self._render_text(element)
-        elif isinstance(element, ImageElement):
+    def _render_element(self, element: dict[str, Any]) -> str:
+        """要素タイプごとに分岐
+        
+        Google Slides API pageElement形式:
+        {
+          "objectId": "...",
+          "transform": {"translateX": float, "translateY": float},
+          "size": {"width": {"magnitude": float, "unit": "PT"}, "height": {...}},
+          "shape": {...} OR "image": {...}
+        }
+        """
+        if "image" in element:
             return self._render_image(element)
-        elif isinstance(element, ShapeElement):
+        elif "shape" in element:
+            # TEXT_BOX や RECTANGLE などのshape
             return self._render_shape(element)
-        elif isinstance(element, ChartElement):
-            return self._render_chart(element)
-        elif isinstance(element, TableElement):
-            return self._render_table(element)
         return ""
 
-    def _render_text(self, element: TextElement) -> str:
-        """テキスト要素のHTML生成"""
-        style = element.style
-        inline_style = (
-            f"position: absolute; "
-            f"left: {element.position.x}px; "
-            f"top: {element.position.y}px; "
-            f"width: {element.position.width}px; "
-            f"height: {element.position.height}px; "
-            f"font-family: {style.font_family}; "
-            f"font-size: {style.font_size}px; "
-            f"font-weight: {style.font_weight}; "
-            f"color: {style.color}; "
-            f"text-align: {style.align}; "
-            f"line-height: {style.line_height}; "
-            f"z-index: {element.z_index};"
+    def _render_shape(self, element: dict[str, Any]) -> str:
+        """Shape要素（TEXT_BOX, RECTANGLEなど）のHTML生成"""
+        object_id = element.get("objectId", "")
+        position_style = self._get_position_style(element)
+        
+        shape_data = element.get("shape", {})
+        shape_type = shape_data.get("shapeType", "TEXT_BOX")
+        text_data = shape_data.get("text", {})
+        
+        # textElementsから実際のテキストコンテンツを抽出
+        text_content = self._extract_text_content(text_data)
+        
+        return (
+            f'<div class="shape-element shape-{shape_type.lower()}" '
+            f'id="{object_id}" style="{position_style}">'
+            f'{self._escape_html(text_content)}'
+            f'</div>\n'
         )
-        
-        content = self._escape_html(element.content)
-        return f'<div class="text-element" id="{element.element_id}" style="{inline_style}">{content}</div>\n'
 
-    def _render_image(self, element: ImageElement) -> str:
-        """画像要素のHTML生成"""
-        inline_style = (
-            f"position: absolute; "
-            f"left: {element.position.x}px; "
-            f"top: {element.position.y}px; "
-            f"width: {element.position.width}px; "
-            f"height: {element.position.height}px; "
-            f"z-index: {element.z_index};"
+    def _render_image(self, element: dict[str, Any]) -> str:
+        """Image要素のHTML生成"""
+        object_id = element.get("objectId", "")
+        position_style = self._get_position_style(element)
+        
+        image_data = element.get("image", {})
+        content_url = image_data.get("contentUrl", "")
+        
+        return (
+            f'<img class="image-element" '
+            f'id="{object_id}" '
+            f'src="{content_url}" '
+            f'alt="Slide image" '
+            f'style="{position_style}" />\n'
         )
+    
+    def _get_position_style(self, element: dict[str, Any]) -> str:
+        """transform + sizeからCSSスタイル文字列を生成"""
+        transform = element.get("transform", {})
+        size_data = element.get("size", {})
         
-        alt_text = self._escape_html(element.alt_text)
-        return f'<img class="image-element" id="{element.element_id}" src="{element.source_url}" alt="{alt_text}" style="{inline_style}" />\n'
-
-    def _render_shape(self, element: ShapeElement) -> str:
-        """図形要素のHTML生成"""
-        border_radius = "50%" if element.shape_type == "circle" else "0"
-        border_style = ""
-        if element.border_color and element.border_width > 0:
-            border_style = f"border: {element.border_width}px solid {element.border_color};"
-
-        inline_style = (
+        # PTをピクセルに変換
+        x_pt = transform.get("translateX", 0)
+        y_pt = transform.get("translateY", 0)
+        width_pt = size_data.get("width", {}).get("magnitude", 100)
+        height_pt = size_data.get("height", {}).get("magnitude", 50)
+        
+        x_px = x_pt * self.PT_TO_PX
+        y_px = y_pt * self.PT_TO_PX
+        width_px = width_pt * self.PT_TO_PX
+        height_px = height_pt * self.PT_TO_PX
+        
+        return (
             f"position: absolute; "
-            f"left: {element.position.x}px; "
-            f"top: {element.position.y}px; "
-            f"width: {element.position.width}px; "
-            f"height: {element.position.height}px; "
-            f"background-color: {element.fill_color}; "
-            f"border-radius: {border_radius}; "
-            f"{border_style} "
-            f"z-index: {element.z_index};"
+            f"left: {x_px}px; "
+            f"top: {y_px}px; "
+            f"width: {width_px}px; "
+            f"height: {height_px}px;"
         )
+    
+    def _extract_text_content(self, text_data: dict[str, Any]) -> str:
+        """textElements配列からテキストコンテンツを抽出
         
-        return f'<div class="shape-element shape-{element.shape_type}" id="{element.element_id}" style="{inline_style}"></div>\n'
-
-    def _render_chart(self, element: ChartElement) -> str:
-        """グラフ要素のHTML生成"""
-        inline_style = (
-            f"position: absolute; "
-            f"left: {element.position.x}px; "
-            f"top: {element.position.y}px; "
-            f"width: {element.position.width}px; "
-            f"height: {element.position.height}px; "
-            f"z-index: {element.z_index};"
-        )
+        Google Slides API text構造:
+        {
+          "textElements": [
+            {"textRun": {"content": "Hello"}},
+            {"paragraphMarker": {...}},
+            ...
+          ]
+        }
+        """
+        text_elements = text_data.get("textElements", [])
+        content_parts = []
         
-        # Chart.js用のdata属性（JSON文字列としてエスケープ）
-        import json
-        chart_data = html.escape(json.dumps(element.data))
+        for elem in text_elements:
+            if "textRun" in elem:
+                content = elem["textRun"].get("content", "")
+                content_parts.append(content)
         
-        return f'<canvas class="chart-element" id="{element.element_id}" data-chart-type="{element.chart_type}" data-chart-data="{chart_data}" style="{inline_style}"></canvas>\n'
-
-    def _render_table(self, element: TableElement) -> str:
-        """表要素のHTML生成"""
-        inline_style = (
-            f"position: absolute; "
-            f"left: {element.position.x}px; "
-            f"top: {element.position.y}px; "
-            f"width: {element.position.width}px; "
-            f"height: {element.position.height}px; "
-            f"z-index: {element.z_index};"
-        )
-        
-        rows_html = ""
-        for row in element.cells:
-            cells_html = "".join([f"<td>{self._escape_html(cell)}</td>" for cell in row])
-            rows_html += f"<tr>{cells_html}</tr>"
-        
-        return f'<table class="table-element" id="{element.element_id}" style="{inline_style}"><tbody>{rows_html}</tbody></table>\n'
-
-    def _render_background(self, background: BackgroundStyle) -> str:
-        """背景スタイルのCSS文字列生成"""
-        styles = []
-        if background.color:
-            styles.append(f"background-color: {background.color}")
-        if background.image_url:
-            styles.append(f"background-image: url('{background.image_url}')")
-            styles.append("background-size: cover")
-            styles.append("background-position: center")
-        return "; ".join(styles) + ";" if styles else ""
+        return "".join(content_parts)
 
     @staticmethod
     def _escape_html(text: str) -> str:
@@ -285,7 +263,7 @@ class HTMLRenderer:
 
     @staticmethod
     def _get_base_scripts() -> str:
-        """基本JavaScript"""
+        """基本JavaScript（キーボードナビゲーション）"""
         return """
             // キーボードナビゲーション
             let currentSlide = 0;
@@ -304,22 +282,5 @@ class HTMLRenderer:
                 } else if (e.key === 'ArrowRight') {
                     scrollToSlide(currentSlide + 1);
                 }
-            });
-            
-            // Chart.js初期化
-            document.addEventListener('DOMContentLoaded', () => {
-                const chartElements = document.querySelectorAll('.chart-element');
-                chartElements.forEach(canvas => {
-                    const chartType = canvas.dataset.chartType;
-                    const chartData = JSON.parse(canvas.dataset.chartData);
-                    new Chart(canvas, {
-                        type: chartType,
-                        data: chartData,
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false
-                        }
-                    });
-                });
             });
         """

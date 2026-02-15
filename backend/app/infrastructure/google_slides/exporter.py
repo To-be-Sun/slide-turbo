@@ -1,345 +1,190 @@
 """
 Google Slides エクスポーター
-生成したスライドを Google Slides に書き出し、PPTX ダウンロード URL を返す。
+Google Slides API生フォーマットのスライドをGoogle Slidesに書き出す。
 """
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
 
 from app.infrastructure.google_slides.client import GoogleSlidesClient
-from app.infrastructure.rendering.schema import (
-    SlidePresentation,
-    SlidePage,
-    TextElement,
-    ImageElement,
-    ShapeElement,
-    TableElement,
-    ElementPosition,
-)
 
-# ─────────────────────────────────────────────────────
-# 定数定義
-# ─────────────────────────────────────────────────────
-
-LAYOUT_MAPPING = {
-    "title_slide": "TITLE",
-    "title_content": "TITLE_AND_BODY",
-    "two_column": "TITLE_AND_TWO_COLUMNS",
-    "blank": "BLANK",
-    "image_full": "BLANK",
-}
-
-SHAPE_TYPE_MAPPING = {
-    "rectangle": "RECTANGLE",
-    "circle": "ELLIPSE",
-    "triangle": "TRIANGLE",
-}
-
-TEXT_ALIGN_MAPPING = {
-    "left": "START",
-    "center": "CENTER",
-    "right": "END",
-}
-
-# PT変換係数（1 px ≈ 0.75 pt）
-PX_TO_PT_RATIO = 0.75
-
-
-# ─────────────────────────────────────────────────────
-# ヘルパー関数
-# ─────────────────────────────────────────────────────
-
-def hex_to_rgb(hex_color: str) -> dict[str, float]:
-    """HEX色をRGB形式に変換 (0.0-1.0)"""
-    hex_color = hex_color.lstrip("#")
-
-    if len(hex_color) == 6:
-        r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
-    elif len(hex_color) == 3:
-        r, g, b = int(hex_color[0] * 2, 16), int(hex_color[1] * 2, 16), int(hex_color[2] * 2, 16)
-    else:
-        return {"red": 0.0, "green": 0.0, "blue": 0.0}
-
-    return {"red": r / 255.0, "green": g / 255.0, "blue": b / 255.0}
-
-
-def px_to_pt(px: float) -> float:
-    """ピクセルをポイント (PT) に変換"""
-    return px * PX_TO_PT_RATIO
-
-
-# ─────────────────────────────────────────────────────
-# GoogleSlidesExporter
-# ─────────────────────────────────────────────────────
 
 class GoogleSlidesExporter:
-    """Google Slides 経由で PPTX を出力"""
+    """Google Slides API形式のスライドをGoogle Slidesにエクスポート"""
 
-    def __init__(self, client: GoogleSlidesClient) -> None:
-        self.client = client
+    def __init__(self, client: GoogleSlidesClient | None = None) -> None:
+        self.client = client or GoogleSlidesClient()
 
-    async def export_presentation(
-        self, presentation: SlidePresentation
-    ) -> dict[str, str]:
-        """SlidePresentation から Google Slides を作成"""
+    async def create_presentation(
+        self,
+        title: str,
+        pages: list[dict[str, Any]],
+        owner_email: str | None = None,
+    ) -> str:
+        """Google Slidesプレゼンテーション作成
+        
+        Args:
+            title: プレゼンテーションタイトル
+            pages: Google Slides API形式のページ配列 [{objectId, pageElements: [...]}]
+            owner_email: 共有先メールアドレス（オプション）
+        
+        Returns:
+            作成されたプレゼンテーションID
+        """
         slides_service = self.client.get_slides_service()
-        body = {"title": presentation.title}
+        
+        # 1. プレゼンテーション作成
+        body = {"title": title}
         created = slides_service.presentations().create(body=body).execute()
         presentation_id = created["presentationId"]
 
-        # 初期スライドを削除
+        # 2. 初期スライドを削除して空にする
         initial_slide_id = created["slides"][0]["objectId"]
-        requests = [{"deleteObject": {"objectId": initial_slide_id}}]
+        requests: list[dict[str, Any]] = [
+            {"deleteObject": {"objectId": initial_slide_id}}
+        ]
 
-        # 各ページのスライド作成リクエストを生成
-        for idx, page in enumerate(presentation.pages):
-            slide_id = f"slide_{idx + 1}"
-            page_requests = self._build_slide_requests(page, slide_id)
-            requests.extend(page_requests)
+        # 3. 各ページを追加
+        for idx, page in enumerate(pages):
+            slide_id = page.get("objectId", f"slide_{idx + 1}")
+            page_elements = page.get("pageElements", [])
+            
+            # スライド作成リクエスト
+            requests.append(
+                {
+                    "createSlide": {
+                        "objectId": slide_id,
+                        "slideLayoutReference": {"predefinedLayout": "BLANK"},
+                    }
+                }
+            )
+            
+            # 各要素を追加（Google Slides API形式をそのまま使用）
+            for element in page_elements:
+                if "shape" in element:
+                    create_request = self._build_create_shape_request(element, slide_id)
+                    requests.append({"createShape": create_request})
+                    
+                    # テキスト挿入（shape.textがある場合）
+                    shape_data = element.get("shape", {})
+                    text_data = shape_data.get("text", {})
+                    if text_data:
+                        text_content = self._extract_text_content(text_data)
+                        if text_content:
+                            requests.append({
+                                "insertText": {
+                                    "objectId": element.get("objectId"),
+                                    "text": text_content,
+                                }
+                            })
+                elif "image" in element:
+                    create_request = self._build_create_image_request(element, slide_id)
+                    requests.append({"createImage": create_request})
 
-        # バッチ更新実行
+        # 4. バッチ更新実行
         if requests:
             slides_service.presentations().batchUpdate(
                 presentationId=presentation_id, body={"requests": requests}
             ).execute()
+        
+        # 5. （オプション）共有設定
+        if owner_email:
+            drive_service = self.client.get_drive_service()
+            drive_service.permissions().create(
+                fileId=presentation_id,
+                body={
+                    "type": "user",
+                    "role": "writer",
+                    "emailAddress": owner_email,
+                },
+            ).execute()
 
-        return {
-            "presentation_id": presentation_id,
-            "presentation_url": f"https://docs.google.com/presentation/d/{presentation_id}/edit",
-            "download_url": f"https://docs.google.com/presentation/d/{presentation_id}/export/pptx",
-        }
+        return presentation_id
 
-    async def export_to_pptx(
-        self, title: str, pages: list[dict[str, Any]]
-    ) -> dict[str, str]:
-        """レガシーメソッド - 後方互換性のため残す"""
-        raise NotImplementedError(
-            "Use export_presentation() instead."
-        )
-
-    # ─────────────────────────────────────────────────
-    # スライド構築
-    # ─────────────────────────────────────────────────
-
-    def _build_slide_requests(
-        self, page: SlidePage, slide_id: str
-    ) -> list[dict[str, Any]]:
-        """ページから Google Slides リクエストを生成"""
-        requests = [
-            {
-                "createSlide": {
-                    "objectId": slide_id,
-                    "slideLayoutReference": {
-                        "predefinedLayout": LAYOUT_MAPPING.get(page.layout, "BLANK")
-                    },
-                }
-            }
-        ]
-
-        # 背景設定
-        if page.background.color or page.background.image_url:
-            requests.extend(self._build_background_requests(slide_id, page.background))
-
-        # 要素追加
-        for element in page.elements:
-            requests.extend(self._build_element_requests(element, slide_id))
-
-        return requests
-
-    def _build_background_requests(
-        self, slide_id: str, background: Any
-    ) -> list[dict[str, Any]]:
-        """背景設定リクエスト生成"""
-        requests = []
-
-        if background.color:
-            rgb = hex_to_rgb(background.color)
-            requests.append(
-                {
-                    "updatePageProperties": {
-                        "objectId": slide_id,
-                        "fields": "pageBackgroundFill.solidFill.color",
-                        "pageProperties": {
-                            "pageBackgroundFill": {
-                                "solidFill": {"color": {"rgbColor": rgb}}
-                            }
-                        },
-                    }
-                }
-            )
-
-        # TODO: 背景画像対応
-        # if background.image_url:
-        #     pass
-
-        return requests
-
-    # ─────────────────────────────────────────────────
-    # 要素リクエスト生成
-    # ─────────────────────────────────────────────────
-
-    def _build_element_requests(
-        self,
-        element: Union[TextElement, ImageElement, ShapeElement, TableElement],
-        slide_id: str,
-    ) -> list[dict[str, Any]]:
-        """要素タイプごとにリクエストを生成"""
-        if isinstance(element, TextElement):
-            return self._build_text_requests(element, slide_id)
-        elif isinstance(element, ImageElement):
-            return self._build_image_requests(element, slide_id)
-        elif isinstance(element, ShapeElement):
-            return self._build_shape_requests(element, slide_id)
-        elif isinstance(element, TableElement):
-            return self._build_table_requests(element, slide_id)
-        else:
-            return []
-
-    def _build_element_properties(
-        self, slide_id: str, position: ElementPosition
+    def _build_create_shape_request(
+        self, element: dict[str, Any], slide_id: str
     ) -> dict[str, Any]:
-        """共通の要素プロパティを生成"""
-        return {
-            "pageObjectId": slide_id,
-            "size": {
-                "width": {"magnitude": px_to_pt(position.width), "unit": "PT"},
-                "height": {"magnitude": px_to_pt(position.height), "unit": "PT"},
-            },
-            "transform": {
-                "scaleX": 1,
-                "scaleY": 1,
-                "translateX": px_to_pt(position.x),
-                "translateY": px_to_pt(position.y),
-                "unit": "PT",
+        """createShapeリクエスト生成
+        
+        Google Slides API pageElement形式からcreateShapeリクエストを生成
+        """
+        object_id = element.get("objectId")
+        transform = element.get("transform", {})
+        size = element.get("size", {})
+        shape_data = element.get("shape", {})
+        
+        request: dict[str, Any] = {
+            "objectId": object_id,
+            "shapeType": shape_data.get("shapeType", "TEXT_BOX"),
+            "elementProperties": {
+                "pageObjectId": slide_id,
+                "transform": {
+                    "scaleX": 1.0,
+                    "scaleY": 1.0,
+                    "translateX": transform.get("translateX", 0),
+                    "translateY": transform.get("translateY", 0),
+                    "unit": "PT",
+                },
+                "size": {
+                    "width": {
+                        "magnitude": size.get("width", {}).get("magnitude", 100),
+                        "unit": "PT",
+                    },
+                    "height": {
+                        "magnitude": size.get("height", {}).get("magnitude", 50),
+                        "unit": "PT",
+                    },
+                },
             },
         }
+        
+        return request
 
-    def _build_text_requests(
-        self, element: TextElement, slide_id: str
-    ) -> list[dict[str, Any]]:
-        """テキスト要素のリクエスト生成"""
-        element_id = f"{slide_id}_{element.element_id}"
-        style = element.style
-
-        requests = [
-            # テキストボックス作成
-            {
-                "createShape": {
-                    "objectId": element_id,
-                    "shapeType": "TEXT_BOX",
-                    "elementProperties": self._build_element_properties(slide_id, element.position),
-                }
-            },
-            # テキスト挿入
-            {"insertText": {"objectId": element_id, "text": element.content}},
-            # テキストスタイル適用
-            {
-                "updateTextStyle": {
-                    "objectId": element_id,
-                    "fields": "foregroundColor,fontFamily,fontSize,bold",
-                    "style": {
-                        "foregroundColor": {"opaqueColor": {"rgbColor": hex_to_rgb(style.color)}},
-                        "fontFamily": style.font_family,
-                        "fontSize": {"magnitude": style.font_size, "unit": "PT"},
-                        "bold": style.font_weight == "bold",
+    def _build_create_image_request(
+        self, element: dict[str, Any], slide_id: str
+    ) -> dict[str, Any]:
+        """createImageリクエスト生成"""
+        object_id = element.get("objectId")
+        transform = element.get("transform", {})
+        size = element.get("size", {})
+        image_data = element.get("image", {})
+        
+        request: dict[str, Any] = {
+            "objectId": object_id,
+            "url": image_data.get("contentUrl", ""),
+            "elementProperties": {
+                "pageObjectId": slide_id,
+                "transform": {
+                    "scaleX": 1.0,
+                    "scaleY": 1.0,
+                    "translateX": transform.get("translateX", 0),
+                    "translateY": transform.get("translateY", 0),
+                    "unit": "PT",
+                },
+                "size": {
+                    "width": {
+                        "magnitude": size.get("width", {}).get("magnitude", 100),
+                        "unit": "PT",
                     },
-                    "textRange": {"type": "ALL"},
-                }
-            },
-            # テキスト配置
-            {
-                "updateParagraphStyle": {
-                    "objectId": element_id,
-                    "fields": "alignment",
-                    "style": {"alignment": TEXT_ALIGN_MAPPING.get(style.align, "START")},
-                    "textRange": {"type": "ALL"},
-                }
-            },
-        ]
-
-        return requests
-
-    def _build_image_requests(
-        self, element: ImageElement, slide_id: str
-    ) -> list[dict[str, Any]]:
-        """画像要素のリクエスト生成"""
-        element_id = f"{slide_id}_{element.element_id}"
-
-        return [
-            {
-                "createImage": {
-                    "objectId": element_id,
-                    "url": element.source_url,
-                    "elementProperties": self._build_element_properties(slide_id, element.position),
-                }
-            }
-        ]
-
-    def _build_shape_requests(
-        self, element: ShapeElement, slide_id: str
-    ) -> list[dict[str, Any]]:
-        """図形要素のリクエスト生成"""
-        element_id = f"{slide_id}_{element.element_id}"
-
-        requests = [
-            # 図形作成
-            {
-                "createShape": {
-                    "objectId": element_id,
-                    "shapeType": SHAPE_TYPE_MAPPING.get(element.shape_type, "RECTANGLE"),
-                    "elementProperties": self._build_element_properties(slide_id, element.position),
-                }
-            },
-            # 塗りつぶし色設定
-            {
-                "updateShapeProperties": {
-                    "objectId": element_id,
-                    "fields": "shapeBackgroundFill.solidFill.color",
-                    "shapeProperties": {
-                        "shapeBackgroundFill": {
-                            "solidFill": {"color": {"rgbColor": hex_to_rgb(element.fill_color)}}
-                        }
+                    "height": {
+                        "magnitude": size.get("height", {}).get("magnitude", 50),
+                        "unit": "PT",
                     },
-                }
+                },
             },
-        ]
-
-        # 枠線設定（オプション）
-        if element.border_color and element.border_width > 0:
-            requests.append(
-                {
-                    "updateShapeProperties": {
-                        "objectId": element_id,
-                        "fields": "outline",
-                        "shapeProperties": {
-                            "outline": {
-                                "outlineFill": {
-                                    "solidFill": {"color": {"rgbColor": hex_to_rgb(element.border_color)}}
-                                },
-                                "weight": {"magnitude": element.border_width, "unit": "PT"},
-                            }
-                        },
-                    }
-                }
-            )
-
-        return requests
-
-    def _build_table_requests(
-        self, element: TableElement, slide_id: str
-    ) -> list[dict[str, Any]]:
-        """テーブル要素のリクエスト生成"""
-        element_id = f"{slide_id}_{element.element_id}"
-
-        return [
-            {
-                "createTable": {
-                    "objectId": element_id,
-                    "rows": element.rows,
-                    "columns": element.cols,
-                    "elementProperties": self._build_element_properties(slide_id, element.position),
-                }
-            }
-            # TODO: セル内容の挿入
-        ]
+        }
+        
+        return request
+    
+    def _extract_text_content(self, text_data: dict[str, Any]) -> str:
+        """textElements配列からテキストコンテンツを抽出"""
+        text_elements = text_data.get("textElements", [])
+        content_parts = []
+        
+        for elem in text_elements:
+            if "textRun" in elem:
+                content = elem["textRun"].get("content", "")
+                content_parts.append(content)
+        
+        return "".join(content_parts)

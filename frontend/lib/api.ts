@@ -8,6 +8,7 @@ import type {
   Page,
   Slide,
   SlideListItem,
+  SlideOutput,
   SlideVersion,
   Template,
   TemplateListItem,
@@ -434,6 +435,16 @@ export async function updatePage(
   });
 }
 
+export async function deletePage(pageId: string): Promise<void> {
+  if (isDevToken()) {
+    devStore.pages = devStore.pages.filter((p) => p.id !== pageId);
+    return;
+  }
+  return request<void>(`/api/v1/slides/pages/${pageId}`, {
+    method: "DELETE",
+  });
+}
+
 // ── Outlines ─────────────────────────────────
 
 export async function getOutlines(versionId: string): Promise<Outline[]> {
@@ -522,6 +533,30 @@ export async function refineOutline(data: {
     throw new Error("Outline not found");
   }
   return request<Outline>("/api/v1/outlines/refine", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function generateSlideFromOutline(data: {
+  outline_id: string;
+  slide_object_id?: string;
+  image_url?: string;
+  page_num?: number;
+  total_pages?: number;
+  previous_slide_summary?: string;
+}): Promise<SlideOutput> {
+  if (isDevToken()) {
+    return {
+      outline_id: data.outline_id,
+      slide: {
+        objectId: data.slide_object_id || "slide-mvp-001",
+        pageType: "SLIDE",
+        pageElements: [],
+      },
+    };
+  }
+  return request<SlideOutput>("/api/v1/outlines/generate-slide", {
     method: "POST",
     body: JSON.stringify(data),
   });

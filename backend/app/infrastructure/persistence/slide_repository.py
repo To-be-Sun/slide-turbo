@@ -4,6 +4,7 @@ Slide / SlideVersion / Page リポジトリ — Prisma 経由の永続化実装
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from prisma.models import Page as PrismaPage
@@ -39,11 +40,14 @@ def _to_version(record: PrismaSlideVersion) -> SlideVersion:
 
 
 def _to_page(record: PrismaPage) -> Page:
+    raw = record.contents
+    if isinstance(raw, str):
+        raw = json.loads(raw) if raw.strip() else {}
     return Page(
         id=record.id,
         slide_version_id=record.slideVersionId,
         page_num=record.pageNum,
-        contents=record.contents,
+        contents=raw,
         created_at=record.createdAt,
         updated_at=record.updatedAt,
     )
@@ -60,11 +64,11 @@ class SlideRepository:
         template_id: str | None = None,
     ) -> Slide:
         data: dict[str, Any] = {
-            "ownerId": owner_id,
             "title": title,
+            "owner": {"connect": {"id": owner_id}},
         }
         if template_id:
-            data["templateId"] = template_id
+            data["template"] = {"connect": {"id": template_id}}
         record = await db.slide.create(data=data)
         return _to_slide(record)
 
@@ -103,7 +107,10 @@ class SlideRepository:
         self, *, slide_id: str, version_num: int
     ) -> SlideVersion:
         record = await db.slideversion.create(
-            data={"slideId": slide_id, "versionNum": version_num}
+            data={
+                "versionNum": version_num,
+                "slide": {"connect": {"id": slide_id}},
+            }
         )
         return _to_version(record)
 
@@ -143,14 +150,23 @@ class SlideRepository:
         page_num: int,
         contents: Any,
     ) -> Page:
+        contents_json = (
+            contents
+            if isinstance(contents, str)
+            else json.dumps(json.loads(json.dumps(contents, default=str)))
+        )
         record = await db.page.create(
             data={
-                "slideVersionId": slide_version_id,
                 "pageNum": page_num,
-                "contents": contents,
+                "contents": contents_json,
+                "slideVersion": {"connect": {"id": slide_version_id}},
             }
         )
         return _to_page(record)
+
+    async def find_page_by_id(self, page_id: str) -> Page | None:
+        record = await db.page.find_unique(where={"id": page_id})
+        return _to_page(record) if record else None
 
     async def find_pages_by_version(
         self, version_id: str
@@ -164,9 +180,14 @@ class SlideRepository:
     async def update_page(
         self, page_id: str, *, contents: Any
     ) -> Page | None:
+        contents_json = (
+            contents
+            if isinstance(contents, str)
+            else json.dumps(json.loads(json.dumps(contents, default=str)))
+        )
         record = await db.page.update(
             where={"id": page_id},
-            data={"contents": contents},
+            data={"contents": contents_json},
         )
         return _to_page(record) if record else None
 

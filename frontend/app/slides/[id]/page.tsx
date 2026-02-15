@@ -46,6 +46,38 @@ import {
   updatePage,
 } from "@/lib/api";
 
+// ── ページプレビュー（HTML 表示のみ）────────────────────────────────────
+
+type PageContents = {
+  pageSize?: { widthPt: number; heightPt: number };
+  html?: string;
+};
+
+function SlidePreview({ page }: { page: Page }) {
+  const c = typeof page.contents === "object" ? (page.contents as PageContents) : null;
+  const pageSize = c?.pageSize;
+  const aspectRatio =
+    pageSize && pageSize.widthPt > 0 && pageSize.heightPt > 0
+      ? `${pageSize.widthPt} / ${pageSize.heightPt}`
+      : undefined;
+  const html =
+    typeof page.contents === "object"
+      ? (page.contents as PageContents)?.html ?? "<p>コンテンツなし</p>"
+      : String(page.contents);
+
+  return (
+    <div
+      className={`w-full overflow-hidden ${!aspectRatio ? "aspect-video" : ""}`}
+      style={aspectRatio ? { aspectRatio } : undefined}
+    >
+      <div
+        className="slide-preview h-full w-full overflow-hidden text-left text-black [&_.slide]:min-h-0 [&_.slide-canvas]:relative [&_.slide-canvas]:h-full [&_.slide-canvas]:w-full [&_.slide-canvas]:overflow-hidden [&_.slide-text]:overflow-hidden [&_.slide-text]:break-words [&_.slide-image]:max-w-full [&_.slide-image]:max-h-full [&_img]:max-w-full [&_img]:h-auto [&_p]:my-0"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  );
+}
+
 export default function SlideEditorPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -92,6 +124,24 @@ export default function SlideEditorPage() {
           ]);
           setPages(p);
           setOutlines(o);
+          // バージョンはあるがページが0件（古いデータ等）のとき、1ページだけ自動作成してプレビューを表示
+          if (p.length === 0) {
+            try {
+              const newPage = await addPage(latest.id, {
+                page_num: 1,
+                contents: {
+                  html: "<div class='slide'><p class='text-muted-foreground'>最初のページを追加しました。編集してください。</p></div>",
+                  elements: [],
+                },
+              });
+              setPages([newPage]);
+            } catch {
+              // addPage が失敗してもそのまま（ページなし表示）
+            }
+          }
+        } else {
+          setPages([]);
+          setOutlines([]);
         }
       } catch (err) {
         console.error(err);
@@ -101,6 +151,13 @@ export default function SlideEditorPage() {
     }
     load();
   }, [id]);
+
+  // ページ数が減ったときに selectedPage を範囲内に収める
+  useEffect(() => {
+    if (pages.length > 0 && selectedPage >= pages.length) {
+      setSelectedPage(Math.max(0, pages.length - 1));
+    }
+  }, [pages.length, selectedPage]);
 
   // Outline CRUD
   const handleCreateOutline = async () => {
@@ -405,36 +462,17 @@ export default function SlideEditorPage() {
 
         {/* ── Right Panel: Slide Preview ──────── */}
         <div className="flex flex-1 flex-col bg-muted/30">
-          <div className="flex items-center justify-between border-b bg-card px-4 py-2">
-            <span className="text-sm font-medium">
-              プレビュー
-              {pages[selectedPage] && ` — ページ ${pages[selectedPage].page_num}`}
-            </span>
-          </div>
-          <div className="flex flex-1 items-center justify-center p-8">
-            {pages[selectedPage] ? (
-              <div className="w-full max-w-4xl">
-                <div className="aspect-video w-full rounded-lg border bg-white shadow-lg">
-                  {/* ページの contents を HTML としてレンダリング */}
-                  <div
-                    className="flex h-full items-center justify-center p-8 text-black"
-                    dangerouslySetInnerHTML={{
-                      __html:
-                        typeof pages[selectedPage].contents === "object"
-                          ? (pages[selectedPage].contents as { html?: string })
-                              ?.html || "<p>コンテンツなし</p>"
-                          : String(pages[selectedPage].contents),
-                    }}
-                  />
-                </div>
-                <p className="mt-3 text-center text-xs text-muted-foreground">
-                  {selectedPage + 1} / {pages.length}
-                </p>
+          <div className="flex-1 overflow-auto p-6">
+            {pages.length > 0 ? (
+              <div className="mx-auto max-w-4xl">
+                <SlidePreview page={pages[selectedPage]} />
               </div>
             ) : (
-              <div className="text-center text-muted-foreground">
-                <p className="mb-2 text-sm">ページがありません</p>
-                <p className="text-xs">左パネルの + からページを追加してください</p>
+              <div className="flex flex-1 items-center justify-center text-center text-muted-foreground">
+                <div>
+                  <p className="mb-2 text-sm">ページがありません</p>
+                  <p className="text-xs">左パネルの + からページを追加してください</p>
+                </div>
               </div>
             )}
           </div>

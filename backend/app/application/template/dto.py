@@ -12,6 +12,12 @@ class ImportFromGoogleSlidesDTO(BaseModel):
     presentation_url: str
 
 
+class CreateTemplateDTO(BaseModel):
+    """手動テンプレート作成用"""
+    title: str
+    contents: Any
+
+
 class UpdateTemplateDTO(BaseModel):
     title: Optional[str] = None
     contents: Optional[Any] = None

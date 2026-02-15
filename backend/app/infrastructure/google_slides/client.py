@@ -101,10 +101,22 @@ class GoogleSlidesClient:
                 ) from e
             raise
 
+    def get_page(self, presentation_id: str, page_object_id: str) -> dict:
+        """指定ページの詳細（pageElements 含む）を取得"""
+        return (
+            self.slides.presentations()
+            .pages()
+            .get(
+                presentationId=presentation_id,
+                pageObjectId=page_object_id,
+            )
+            .execute()
+        )
+
     def get_slide_thumbnail(
         self, presentation_id: str, page_id: str
     ) -> str:
-        """スライドのサムネイル URL を取得"""
+        """スライドのサムネイル URL を取得（高解像度、最大 1600x900）"""
         try:
             resp = (
                 self.slides.presentations()
@@ -134,3 +146,20 @@ class GoogleSlidesClient:
                 ) from e
             raise
         return resp.get("contentUrl", "")
+
+    def batch_update(
+        self, presentation_id: str, requests: list[dict]
+    ) -> dict:
+        """
+        presentations.batchUpdate を実行。
+        requests: [{ "deleteText": {...} }, { "insertText": {...} }, ...]
+        """
+        body = {"requests": requests}
+        return (
+            self.slides.presentations()
+            .batchUpdate(
+                presentationId=presentation_id,
+                body=body,
+            )
+            .execute()
+        )

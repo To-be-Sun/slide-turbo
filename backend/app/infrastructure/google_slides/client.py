@@ -19,8 +19,8 @@ from app.shared.exceptions import (
 class GoogleSlidesClient:
     """Google Slides / Drive API との通信を担当"""
     _SCOPES = [
-        "https://www.googleapis.com/auth/presentations.readonly",
-        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/presentations",
+        "https://www.googleapis.com/auth/drive",
     ]
 
     def __init__(self, access_token: str | None = None) -> None:

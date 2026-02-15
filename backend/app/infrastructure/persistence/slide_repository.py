@@ -116,6 +116,15 @@ class SlideRepository:
         )
         return _to_version(record) if record else None
 
+    async def find_version_by_num(
+        self, slide_id: str, version_num: int
+    ) -> SlideVersion | None:
+        """指定スライドの特定バージョンを取得"""
+        record = await db.slideversion.find_first(
+            where={"slideId": slide_id, "versionNum": version_num}
+        )
+        return _to_version(record) if record else None
+
     async def find_versions_by_slide(
         self, slide_id: str
     ) -> list[SlideVersion]:

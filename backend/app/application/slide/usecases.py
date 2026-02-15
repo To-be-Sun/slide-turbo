@@ -15,13 +15,20 @@ from app.application.slide.dto import (
 )
 from app.domain.slide.service import SlideService
 from app.infrastructure.persistence.slide_repository import SlideRepository
+from app.infrastructure.rendering import HTMLRenderer, SlidePresentation
+from app.infrastructure.google_slides.exporter import GoogleSlidesExporter
 from app.shared.exceptions import NotFoundException
 
 
 class SlideUseCases:
-    def __init__(self, repo: SlideRepository):
+    def __init__(
+        self,
+        repo: SlideRepository,
+        google_slides_exporter: GoogleSlidesExporter | None = None,
+    ):
         self.repo = repo
         self.service = SlideService()
+        self.google_slides_exporter = google_slides_exporter
 
     # ── Slide CRUD ────────────────────────────────────
 
@@ -182,3 +189,88 @@ class SlideUseCases:
             )
             for p in pages
         ]
+
+    # ── Preview ───────────────────────────────────────
+
+    async def render_preview(self, slide_id: str, version_num: int) -> str:
+        """指定バージョンのスライドをHTMLプレビュー生成"""
+        # スライド存在確認
+        slide = await self.repo.find_slide_by_id(slide_id)
+        if not slide:
+            raise NotFoundException(f"Slide {slide_id} not found")
+
+        # バージョン取得
+        version = await self.repo.find_version_by_num(slide_id, version_num)
+        if not version:
+            raise NotFoundException(
+                f"Version {version_num} not found for slide {slide_id}"
+            )
+
+        # ページ一覧取得
+        pages = await self.repo.find_pages_by_version(version.id)
+        if not pages:
+            # ページがない場合は空のプレゼンテーション
+            presentation = SlidePresentation(
+                title=slide.title or "Untitled", pages=[]
+            )
+        else:
+            # 各ページのcontentsを統合してSlidePresentation作成
+            page_data = []
+            for page in sorted(pages, key=lambda p: p.page_num):
+                if page.contents:
+                    page_data.append(page.contents)
+
+            presentation = SlidePresentation(
+                title=slide.title or "Untitled", pages=page_data
+            )
+
+        # HTML生成
+        renderer = HTMLRenderer()
+        return renderer.render_presentation(presentation)
+
+    # ── Export ────────────────────────────────────────
+
+    async def export_to_google_slides(
+        self, slide_id: str, version_num: int
+    ) -> dict[str, str]:
+        """指定バージョンのスライドをGoogle Slidesにエクスポート"""
+        if not self.google_slides_exporter:
+            raise NotFoundException(
+                "Google Slides exporter is not configured"
+            )
+
+        # スライド存在確認
+        slide = await self.repo.find_slide_by_id(slide_id)
+        if not slide:
+            raise NotFoundException(f"Slide {slide_id} not found")
+
+        # バージョン取得
+        version = await self.repo.find_version_by_num(slide_id, version_num)
+        if not version:
+            raise NotFoundException(
+                f"Version {version_num} not found for slide {slide_id}"
+            )
+
+        # ページ一覧取得
+        pages = await self.repo.find_pages_by_version(version.id)
+        if not pages:
+            # ページがない場合は空のプレゼンテーション
+            presentation = SlidePresentation(
+                title=slide.title or "Untitled", pages=[]
+            )
+        else:
+            # 各ページのcontentsを統合してSlidePresentation作成
+            page_data = []
+            for page in sorted(pages, key=lambda p: p.page_num):
+                if page.contents:
+                    page_data.append(page.contents)
+
+            presentation = SlidePresentation(
+                title=slide.title or "Untitled", pages=page_data
+            )
+
+        # Google Slidesにエクスポート
+        result = await self.google_slides_exporter.export_presentation(
+            presentation
+        )
+        return result

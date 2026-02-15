@@ -2,7 +2,8 @@
 Slide (Project) Router — スライドプロジェクト管理エンドポイント
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import HTMLResponse
 
 from app.application.slide.dto import (
     CreatePageDTO,
@@ -140,3 +141,28 @@ async def update_page(
 ):
     """ページ更新"""
     return await uc.update_page(page_id, body)
+
+
+# ── Preview ───────────────────────────────────────────
+
+
+@router.get("/{slide_id}/preview", response_class=HTMLResponse)
+async def preview_slide(
+    slide_id: str,
+    version: int = Query(1, description="プレビューするバージョン番号"),
+    uc: SlideUseCases = Depends(_get_usecases),
+):
+    """スライドHTMLプレビュー生成 (手動リフレッシュ)"""
+    html_content = await uc.render_preview(slide_id, version)
+    return HTMLResponse(content=html_content)
+
+
+@router.post("/{slide_id}/export/google-slides")
+async def export_to_google_slides(
+    slide_id: str,
+    version: int = Query(1, description="エクスポートするバージョン番号"),
+    uc: SlideUseCases = Depends(_get_usecases),
+):
+    """Google Slidesエクスポート"""
+    result = await uc.export_to_google_slides(slide_id, version)
+    return {"success": True, "data": result}

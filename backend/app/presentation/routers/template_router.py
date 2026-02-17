@@ -120,7 +120,6 @@ async def import_preview(
         contents["slots"] = []
 
     return {"title": title, "contents": contents}
->>>>>>> pr-9
 
 
 @router.get("", response_model=list[TemplateListItemDTO])

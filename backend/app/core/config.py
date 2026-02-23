@@ -18,12 +18,14 @@ class Settings(BaseSettings):
     # --- Google API ---
     google_client_id: str = ""
     google_client_secret: str = ""
-    google_redirect_uri: str = "http://localhost:3001/auth/callback"
+    google_redirect_uri: str = "http://localhost:3000/login"
+    google_refresh_callback_uri: str = "http://localhost:3001/api/v1/users/auth/google/refresh-callback"
     google_refresh_token: str = ""
     google_credentials_path: str = ""
 
     # --- Gemini API ---
     gemini_api_key: str = ""
+    gemini_model: str = "gemini-1.5-flash"
 
     # --- Server ---
     port: int = 3001

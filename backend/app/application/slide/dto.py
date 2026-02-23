@@ -33,6 +33,15 @@ class UpdatePageDTO(BaseModel):
     contents: Any
 
 
+class SyncPageEditDTO(BaseModel):
+    object_id: str
+    text: str
+
+
+class SyncPageEditsDTO(BaseModel):
+    edits: list[SyncPageEditDTO]
+
+
 # ── Response ──────────────────────────────────────────
 
 

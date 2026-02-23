@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from prisma import Json
 from prisma.models import Page as PrismaPage
 from prisma.models import Slide as PrismaSlide
 from prisma.models import SlideVersion as PrismaSlideVersion
@@ -138,7 +139,7 @@ class SlideRepository:
             data={
                 "slideVersionId": slide_version_id,
                 "pageNum": page_num,
-                "contents": contents,
+                "contents": Json(contents),
             }
         )
         return _to_page(record)
@@ -152,12 +153,25 @@ class SlideRepository:
         )
         return [_to_page(r) for r in records]
 
+    async def find_page_by_id(self, page_id: str) -> Page | None:
+        record = await db.page.find_unique(where={"id": page_id})
+        return _to_page(record) if record else None
+
     async def update_page(
         self, page_id: str, *, contents: Any
     ) -> Page | None:
         record = await db.page.update(
             where={"id": page_id},
-            data={"contents": contents},
+            data={"contents": Json(contents)},
+        )
+        return _to_page(record) if record else None
+
+    async def update_page_num(
+        self, page_id: str, *, page_num: int
+    ) -> Page | None:
+        record = await db.page.update(
+            where={"id": page_id},
+            data={"pageNum": page_num},
         )
         return _to_page(record) if record else None
 

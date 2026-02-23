@@ -16,6 +16,7 @@ export interface User {
 export interface TokenResponse {
   access_token: string;
   token_type: string;
+  google_access_token?: string | null;
   user: User;
 }
 
@@ -85,4 +86,9 @@ export interface Outline {
   description: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface SlideOutput {
+  outline_id: string;
+  slide: unknown;
 }

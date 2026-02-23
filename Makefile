@@ -37,7 +37,7 @@ setup:  ## 初期セットアップ (DB起動 → pip install → prisma generat
 	@echo "==> Generating Prisma client..."
 	cd backend && python -m prisma generate
 	@echo "==> Pushing schema to DB..."
-	cd backend && DATABASE_URL=postgresql://slide_turbo:slide_turbo@localhost:5433/slide_turbo python3 -m prisma db push
+	cd backend && DATABASE_URL=postgresql://slide_turbo:slide_turbo@localhost:5434/slide_turbo python3 -m prisma db push
 	@echo ""
 	@echo "✓ Setup complete! Run 'make up' to start everything."
 
@@ -49,7 +49,7 @@ clean:  ## コンテナ + ボリューム完全削除
 dev:  ## DB だけ Docker、Backend はホスト側で起動 (ホットリロード)
 	docker compose up -d db
 	@sleep 2
-	cd backend && DATABASE_URL=postgresql://slide_turbo:slide_turbo@localhost:5433/slide_turbo \
+	cd backend && DATABASE_URL=postgresql://slide_turbo:slide_turbo@localhost:5434/slide_turbo \
 		python3 -m uvicorn app.main:app --host 0.0.0.0 --port 3001 --reload
 
 help:  ## ヘルプ表示

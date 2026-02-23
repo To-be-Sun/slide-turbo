@@ -2,7 +2,8 @@
 Slide (Project) Router — スライドプロジェクト管理エンドポイント
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.application.slide.dto import (
     CreatePageDTO,
@@ -75,6 +76,41 @@ async def delete_slide(
     await uc.delete(slide_id)
 
 
+# ── Rendering & Export ────────────────────────────────
+
+
+@router.get("/{slide_id}/preview", response_class=HTMLResponse)
+async def preview_slide(
+    slide_id: str,
+    version_num: int | None = Query(None, description="バージョン番号（省略時は最新）"),
+    uc: SlideUseCases = Depends(_get_usecases),
+):
+    """スライドHTMLプレビュー生成"""
+    html = await uc.render_preview(slide_id, version_num)
+    return HTMLResponse(content=html)
+
+
+@router.post("/{slide_id}/export")
+async def export_slide_to_google_slides(
+    slide_id: str,
+    version_num: int | None = Query(None, description="バージョン番号（省略時は最新）"),
+    owner_email: str | None = Query(None, description="共有先メールアドレス"),
+    current_user=Depends(get_current_user),
+    uc: SlideUseCases = Depends(_get_usecases),
+):
+    """Google Slidesへエクスポート"""
+    presentation_id = await uc.export_to_google_slides(
+        slide_id=slide_id,
+        version_num=version_num,
+        owner_email=owner_email,
+    )
+    return JSONResponse({
+        "presentationId": presentation_id,
+        "presentationUrl": f"https://docs.google.com/presentation/d/{presentation_id}/edit",
+        "downloadUrl": f"https://docs.google.com/presentation/d/{presentation_id}/export/pptx",
+    })
+
+
 # ── Version ───────────────────────────────────────────
 
 
@@ -140,3 +176,12 @@ async def update_page(
 ):
     """ページ更新"""
     return await uc.update_page(page_id, body)
+
+
+@router.delete("/pages/{page_id}", status_code=204)
+async def delete_page(
+    page_id: str,
+    uc: SlideUseCases = Depends(_get_usecases),
+):
+    """ページ削除"""
+    await uc.delete_page(page_id)

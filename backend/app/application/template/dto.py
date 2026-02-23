@@ -3,21 +3,19 @@ Template Application DTO
 """
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
 
-# ── Request ───────────────────────────────────────────
+class ImportFromGoogleSlidesDTO(BaseModel):
+    presentation_url: str
 
 
 class CreateTemplateDTO(BaseModel):
+    """手動テンプレート作成用"""
     title: str
     contents: Any
-
-
-class ImportFromGoogleSlidesDTO(BaseModel):
-    presentation_url: str
 
 
 class UpdateTemplateDTO(BaseModel):

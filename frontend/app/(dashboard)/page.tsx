@@ -147,6 +147,9 @@ export default function DashboardPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Google でログインしてインポートしたテンプレートを選ぶと、URL のスライド内容がそのままプレビューに表示されます。
+                </p>
               </div>
             </div>
             <DialogFooter>

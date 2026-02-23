@@ -1,6 +1,6 @@
 """
 Slide (Project) UseCases
-スライドの CRUD、バージョン管理、ページ操作。
+スライドの CRUD、バージョン管理、ページ操作、HTMLレンダリング、Google Slidesエクスポート。
 """
 
 from app.application.slide.dto import (
@@ -15,6 +15,8 @@ from app.application.slide.dto import (
 )
 from app.domain.slide.service import SlideService
 from app.infrastructure.persistence.slide_repository import SlideRepository
+from app.infrastructure.rendering.html_renderer import HTMLRenderer
+from app.infrastructure.google_slides.exporter import GoogleSlidesExporter
 from app.shared.exceptions import NotFoundException
 
 
@@ -138,9 +140,16 @@ class SlideUseCases:
         self, version_id: str, dto: CreatePageDTO
     ) -> PageResponseDTO:
         """ページ追加"""
+        # page_num 衝突時は末尾へ自動採番して Unique 制約違反を回避する
+        pages = await self.repo.find_pages_by_version(version_id)
+        existing_nums = {p.page_num for p in pages}
+        page_num = dto.page_num
+        if page_num in existing_nums:
+            page_num = (max(existing_nums) if existing_nums else 0) + 1
+
         page = await self.repo.create_page(
             slide_version_id=version_id,
-            page_num=dto.page_num,
+            page_num=page_num,
             contents=dto.contents,
         )
         return PageResponseDTO(
@@ -182,3 +191,94 @@ class SlideUseCases:
             )
             for p in pages
         ]
+
+    async def delete_page(self, page_id: str) -> None:
+        """ページ削除"""
+        page = await self.repo.find_page_by_id(page_id)
+        if page is None:
+            raise NotFoundException("Page", page_id)
+
+        deleted = await self.repo.delete_page(page_id)
+        if not deleted:
+            raise NotFoundException("Page", page_id)
+
+        # 削除後に page_num を 1..N へ詰め直す
+        pages = await self.repo.find_pages_by_version(page.slide_version_id)
+        for index, p in enumerate(pages, start=1):
+            if p.page_num != index:
+                await self.repo.update_page_num(p.id, page_num=index)
+
+    # ── Rendering & Export ────────────────────────────
+
+    async def render_preview(self, slide_id: str, version_num: int | None = None) -> str:
+        """スライドのHTMLプレビュー生成
+        
+        Args:
+            slide_id: スライドID
+            version_num: バージョン番号（Noneの場合は最新）
+        
+        Returns:
+            HTML文字列
+        """
+        slide = await self.repo.find_slide_by_id(slide_id)
+        if slide is None:
+            raise NotFoundException("Slide", slide_id)
+        
+        # バージョン取得
+        if version_num is None:
+            version = await self.repo.find_latest_version(slide_id)
+        else:
+            versions = await self.repo.find_versions_by_slide(slide_id)
+            version = next((v for v in versions if v.version_num == version_num), None)
+        
+        if version is None:
+            raise NotFoundException("SlideVersion", f"{slide_id}/v{version_num or 'latest'}")
+        
+        # ページ取得（Google Slides API形式のcontents）
+        pages = await self.repo.find_pages_by_version(version.id)
+        page_data_list = [p.contents for p in pages]  # contents = dict[str, Any]
+        
+        # HTMLレンダリング
+        renderer = HTMLRenderer()
+        html = renderer.render_presentation(title=slide.title, pages=page_data_list)
+        return html
+    
+    async def export_to_google_slides(
+        self, slide_id: str, version_num: int | None = None, owner_email: str | None = None
+    ) -> str:
+        """Google Slidesへエクスポート
+        
+        Args:
+            slide_id: スライドID
+            version_num: バージョン番号（Noneの場合は最新）
+            owner_email: Google Slidesの共有先メールアドレス
+        
+        Returns:
+            作成されたGoogle SlidesのプレゼンテーションID
+        """
+        slide = await self.repo.find_slide_by_id(slide_id)
+        if slide is None:
+            raise NotFoundException("Slide", slide_id)
+        
+        # バージョン取得
+        if version_num is None:
+            version = await self.repo.find_latest_version(slide_id)
+        else:
+            versions = await self.repo.find_versions_by_slide(slide_id)
+            version = next((v for v in versions if v.version_num == version_num), None)
+        
+        if version is None:
+            raise NotFoundException("SlideVersion", f"{slide_id}/v{version_num or 'latest'}")
+        
+        # ページ取得（Google Slides API形式のcontents）
+        pages = await self.repo.find_pages_by_version(version.id)
+        page_data_list = [p.contents for p in pages]
+        
+        # Google Slidesエクスポート
+        exporter = GoogleSlidesExporter()
+        presentation_id = await exporter.create_presentation(
+            title=slide.title,
+            pages=page_data_list,
+            owner_email=owner_email,
+        )
+        return presentation_id

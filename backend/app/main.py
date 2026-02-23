@@ -2,6 +2,8 @@
 Slide Turbo — FastAPI エントリーポイント
 """
 
+import logging
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -19,6 +21,18 @@ from app.shared.exceptions import (
     UnauthorizedException,
     ValidationException,
 )
+
+
+# ── Logging ───────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("app")
 
 
 # ── Lifespan ──────────────────────────────────────────
@@ -70,6 +84,16 @@ _STATUS_MAP: dict[type, int] = {
 async def app_exception_handler(request: Request, exc: AppException):
     status = _STATUS_MAP.get(type(exc), 500)
     return JSONResponse(status_code=status, content={"detail": exc.detail})
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """未処理例外 → 500 を返す（CORS ヘッダーが付与されるよう JSONResponse で返す）"""
+    logger.exception("Unhandled exception: %s", exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 
 # ── Routers ───────────────────────────────────────────
